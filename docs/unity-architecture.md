@@ -220,6 +220,24 @@ stateDiagram-v2
 
 KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲する。
 
+## 5.3 結果カード描画戦略 — Pre-allocated 20 行方式
+
+検索結果カードは **prefab に 20 個の `#ResultRow0` 〜 `#ResultRow19` を物理配置**し、各行に `ResultRow.cs` (UdonBehaviour、`_index = N` をハードコード、`_controller` 参照) を持たせる。Controller は描画時に **Instantiate しない** :
+
+- `count <= 20` 行: `_resultRows[i].SetActive(true)` + 各フィールド (`#Name` / `#Owner` / `#TrackCount` / `#Thumbnail`) を更新
+- `count > 20` 行: 余剰は `SetActive(false)` で隠す
+- 各行の `#SelectButton.onClick` → `ResultRow.OnSelect()` → `_controller.OnSelectResultByIndex(_index)`
+
+採用理由 (#12 で確定):
+- Unity `Button.onClick` の persistent UnityEvent は **prefab 時点の固定パラメータ**しか渡せず、Instantiate clone してもパラメータは更新されない
+- UdonSharp は lambda capture をサポートしないため、`btn.onClick.AddListener(() => ...)` で動的に index を捕まえる手も使えない
+- listing API のページサイズが 20 固定なので動的 clone の利点が薄い
+- 固定行ベースの方が prefab 上でレイアウトのプレビュー・デバッグが容易、VRChat 実機での Instantiate コストもゼロ
+
+**トラック一覧 (`#TrackTemplate`) は Click イベントを持たない**ため Instantiate clone を継続する。問題が起きるのは「動的生成した Button から親へ row index を渡す」場面のみで、トラック行はその制約に該当しない。
+
+これに伴い `PlaylistViewerController` の `RenderResultList` ロジックは prefab 完成 (#12) 時にこの方式に書き換える。`OnSelectResultByName(string)` は廃止予定。
+
 ## 6. 各 Runtime UdonBehaviour の責任
 
 | クラス | 責任 | 主な依存 |
@@ -231,6 +249,7 @@ KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲す
 | `ThumbnailLoader` | サムネ画像の GET、Texture2D プール管理 | VRC.SDK3.Image |
 | `Keypad3D` | 3D キーパッドの親、文字 append/backspace/submit | UnityEngine.UI |
 | `KeypadKey` | 個別キー、Interact で親に SendCustomEvent | (Udon Interact) |
+| `ResultRow` (#12 で追加予定) | 結果カードの 1 行分の状態 (固定 `_index`)、`Button.onClick` を受けて `Controller.OnSelectResultByIndex(_index)` を呼ぶ | (Udon) |
 
 すべて `[UdonBehaviourSyncMode(BehaviourSyncMode.None)]`。
 
