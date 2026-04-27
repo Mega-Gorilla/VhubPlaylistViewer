@@ -9,8 +9,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 {
     /// <summary>
     /// 動的に組み立てた検索 URL を VRCStringDownloader で叩く。
-    /// VRCUrl はランタイム生成不可のため、ユーザーが (Keypad3D 経由で)
-    /// VRCUrlInputField に入れた文字列を GetUrl() で取得する経路を使う。
+    /// VRCUrl はランタイム生成不可のため、ユーザーが VRCUrlInputField に入力した文字列
+    /// (VRChat 内蔵キーボード経由、Copy/Paste も可) を GetUrl() で取得する経路を使う。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class SearchClient : UdonSharpBehaviour
@@ -19,7 +19,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private PlaylistViewerController _controller;
 
         [Header("UI")]
-        [Tooltip("Keypad3D が文字を append する VRCUrlInputField。プレフィックスとして API URL がプリセットされている想定")]
+        [Tooltip("ユーザーが VRChat 内蔵キーボードで入力する VRCUrlInputField。Inspector の text にプレフィックス (API URL) をプリセットしておく")]
         [SerializeField] private VRCUrlInputField _searchInputField;
 
         [Tooltip("URL がこの文字列で始まらない場合は不正とみなす")]

@@ -84,35 +84,34 @@ prefab 内の子 GameObject 名で、用途を区別する:
 
 ```
 PlaylistViewer (PlaylistViewerController)
-├── Canvas
-│   ├── #SearchView
-│   │   ├── #SearchInputField        (VRCUrlInputField, prefix 付き)
-│   │   ├── *PrefixOverlay           (prefix を視覚的に隠す TMP_Text)
-│   │   ├── #TabPopular              (Button)
-│   │   ├── #TabRecent               (Button)
-│   │   ├── #TabSearch               (Button, クエリ送信)
-│   │   ├── #ResultListContent       (ScrollRect Content, 親)
-│   │   │   └── #ResultTemplate      (非アクティブのテンプレート row)
-│   │   │       ├── #Thumbnail       (RawImage)
-│   │   │       ├── #Name            (TMP_Text)
-│   │   │       ├── #Owner           (TMP_Text)
-│   │   │       ├── #TrackCount      (TMP_Text)
-│   │   │       └── #SelectButton    (Button)
-│   │   ├── #PrevPageBtn / #NextPageBtn / #PageLabel
-│   │   ├── #LoadingOverlay
-│   │   └── #ErrorOverlay
-│   │       └── #ErrorMessage        (TMP_Text)
-│   └── #DetailView
-│       ├── #PlaylistName / #OwnerName / #TotalTracks
-│       ├── #UrlField                (TMP_InputField, readOnly)
-│       ├── #TrackListContent
-│       │   └── #TrackTemplate
-│       │       ├── #Position
-│       │       └── #Title
-│       └── #BackButton
-└── Keypad3D                          (Keypad3D)
-    └── (KeypadKey ×多数)             (KeypadKey)
+└── Canvas
+    ├── #SearchView
+    │   ├── #SearchInputField        (VRCUrlInputField, Inspector で text に API URL プレフィックスをプリセット)
+    │   ├── #TabPopular              (Button)
+    │   ├── #TabRecent               (Button)
+    │   ├── #TabSearch               (Button, クエリ送信)
+    │   ├── #ResultListContent       (ScrollRect Content, 親)
+    │   │   └── #ResultTemplate      (非アクティブのテンプレート row)
+    │   │       ├── #Thumbnail       (RawImage)
+    │   │       ├── #Name            (TMP_Text)
+    │   │       ├── #Owner           (TMP_Text)
+    │   │       ├── #TrackCount      (TMP_Text)
+    │   │       └── #SelectButton    (Button)
+    │   ├── #PrevPageBtn / #NextPageBtn / #PageLabel
+    │   ├── #LoadingOverlay
+    │   └── #ErrorOverlay
+    │       └── #ErrorMessage        (TMP_Text)
+    └── #DetailView
+        ├── #PlaylistName / #OwnerName / #TotalTracks
+        ├── #UrlField                (TMP_InputField, readOnly)
+        ├── #TrackListContent
+        │   └── #TrackTemplate
+        │       ├── #Position
+        │       └── #Title
+        └── #BackButton
 ```
+
+**v1 では検索入力に 3D キーパッドを使わない**: `Keypad3D` / `KeypadKey` は repo に同梱されているが汎用 TMP_InputField 用ユーティリティとしての位置付けで、v1 prefab には含めない。理由は §12 を参照。
 
 ## 3. 状態機械
 
@@ -165,9 +164,10 @@ stateDiagram-v2
 ### 4.2 search (検索)
 
 ```
-[ユーザーが Keypad で文字入力]
-  → keypad3D.AppendChar('a')
-    → _targetInputField.text += 'a'  (VRCUrlInputField の text を直接書き換え)
+[ユーザーが #SearchInputField (VRCUrlInputField) をタップ]
+  → VRChat 内蔵キーボードが起動 (Copy/Paste も可)
+  → ユーザーがキーボードでクエリ部分を編集
+  → OK で確定すると _searchInputField.text に反映される
 
 [Tab Search Click]
   → controller.RequestSearch()
@@ -177,6 +177,8 @@ stateDiagram-v2
         → OnStringLoadSuccess(json)
           → controller.OnListingResultReceived(json, "search")
 ```
+
+注: 当初は 3D キーパッドからの直接入力を検討していたが、Unity 実機検証で **`VRCUrlInputField.text` setter が Udon 非公開** であることが判明。3D キーパッドからの書き込み経路は塞がれているため、v1 は VRChat 内蔵キーボード方式に統一する。詳細は §6 を参照。
 
 ### 4.3 detail 表示 (resolve)
 
@@ -220,7 +222,7 @@ stateDiagram-v2
 
 KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲する。
 
-## 5.3 結果カード描画戦略 — Pre-allocated 20 行方式
+### 5.3 結果カード描画戦略 — Pre-allocated 20 行方式
 
 検索結果カードは **prefab に 20 個の `#ResultRow0` 〜 `#ResultRow19` を物理配置**し、各行に `ResultRow.cs` (UdonBehaviour、`_index = N` をハードコード、`_controller` 参照) を持たせる。Controller は描画時に **Instantiate しない** :
 
@@ -353,7 +355,13 @@ KawaPlayer / VIB から学んだベストプラクティス:
 1. **Search 機能は VRChat の Allowed Domains 経由でしか動作しない** — テスト時にローカルワールドでは制限がかかる場合あり
 2. **VRCImageDownloader の同時ダウンロード数制限** — VRChat 側の仕様で詳細不明。多数のサムネを一度に表示する場合、キューイング必要
 3. **Pool ID `playlist` / `default-thumb` はサーバー側でも新規** — サーバー実装が完了するまでクライアントのテストは限定的
-4. **VRCUrlInputField の prefix masking はオーバーレイ的な実装** — 内部 text と表示が乖離するため、ユーザーが BackSpace でプレフィックスを消そうとしないよう Keypad3D の Backspace 実装で範囲制限する
+4. **`VRCUrlInputField.text` setter は Udon に非公開**:
+   - Unity 実機検証で UdonSharp が `Method is not exposed to Udon: '_targetField.text'` エラーを出すことが判明
+   - 結果: 3D キーパッドを含む任意の Udon コードから VRCUrlInputField のテキストフィールドへの書き込みは不可
+   - VRCUrl の runtime 構築は `VRCUrlInputField.GetUrl()` のみ、そのフィールドへの入力は **VRChat 内蔵キーボード経由でしか出来ない**
+   - 影響: v1 では検索 UX を 3D キーパッドではなく VRCUrlInputField + VRChat キーボードに統一 (§4.2 参照)
+   - `Keypad3D` / `KeypadKey` は将来の汎用 TMP_InputField ユーティリティとして repo に残すが (#9, A: 残す)、**v1 prefab には含めない**
+5. **VRCUrlInputField の prefix プリセット**: API URL のプレフィックスを Inspector で `_searchInputField.text` にプリセットしておく。VRChat キーボードでユーザーが prefix 部分を消すリスクは `SearchClient.SubmitSearch()` の prefix 検証 (line 50 付近) で弾く
 
 ## 13. 参考実装
 
