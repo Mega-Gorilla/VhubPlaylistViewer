@@ -5,50 +5,117 @@ using System.Reflection;
 using UdonSharp;
 using UdonSharpEditor;
 using UnityEditor;
+using UnityEditorInternal;
 using UnityEngine;
 
 namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
 {
     /// <summary>
-    /// 本パッケージ内の UdonSharpBehaviour 派生クラスに対し、欠けている UdonSharpProgramAsset
-    /// (`.asset`) ファイルを一括生成する。KawaPlayer 等他の UdonSharp パッケージは .cs と並んで
-    /// .asset を repo に同梱しており、初回 import 後に Add Component 等で AddComponent 可能になる。
-    /// 我々は .asset を初回 import 時に自動生成する方針 ([InitializeOnLoadMethod])
-    /// + 手動再実行用 MenuItem の二段構え。
+    /// 本パッケージを fresh import した際に必要な 2 種類の UdonSharp メタアセットを自動生成する:
     ///
-    /// Unity が .cs を見つけても U# Program Asset が無いと
-    /// `UdonSharpEditorUtility.RunBehaviourSetup` 内で
-    /// "Unable to find valid U# program asset associated with script" エラーが出る。
+    ///   (1) U# Assembly Definition (.asset)  — Runtime asmdef を「U# が認識する asm」として登録。
+    ///       これがないと UdonSharp は Runtime/Scripts/*.cs を「U# assembly に属していない」と
+    ///       拒否する。KawaPlayer も同パターンで .asmdef と同名の .asset を同梱している。
+    ///   (2) UdonSharpProgramAsset (.asset) — 各 UdonSharpBehaviour 派生 .cs に対する program asset。
+    ///       Add Component 時に UdonSharpEditorUtility.RunBehaviourSetup から参照される。
+    ///
+    /// 実行: Unity 起動時 / asmdef リコンパイル後に [InitializeOnLoadMethod] で自動。
+    ///       Tools > KawaPlayer PlaylistViewer > Create Missing UdonSharp Program Assets で手動再実行。
     /// </summary>
     public static class UdonSharpProgramAssetCreator
     {
         const string MenuPath = "Tools/KawaPlayer PlaylistViewer/Create Missing UdonSharp Program Assets";
         const string TargetNamespace = "MegaGorilla.KawaPlayer.PlaylistViewer";
+        const string RuntimeAsmdefName = "MegaGorilla.KawaPlayer.PlaylistViewer.Runtime";
+        const string PackageRuntimePath = "Packages/com.vhub.kawaplayer-playlistviewer/Runtime";
 
         [InitializeOnLoadMethod]
         private static void OnLoad()
         {
-            // Unity 起動時 / asmdef リコンパイル後に欠落分を自動生成
             EditorApplication.delayCall += () =>
             {
-                CreateMissingInternal(silent: true);
+                bool createdAsmDef = EnsureUdonSharpAssemblyDefinition(silent: true);
+                if (createdAsmDef)
+                {
+                    // U# Assembly Definition を作った直後はまだ UdonSharp の認識が追いつかないので、
+                    // 一度 AssetDatabase.Refresh + 次の delayCall で program asset を作成する
+                    EditorApplication.delayCall += () => CreateMissingProgramAssets(silent: true);
+                }
+                else
+                {
+                    CreateMissingProgramAssets(silent: true);
+                }
             };
         }
 
         [MenuItem(MenuPath)]
         public static void CreateMissingMenu()
         {
-            CreateMissingInternal(silent: false);
+            int asmCreated = EnsureUdonSharpAssemblyDefinition(silent: false) ? 1 : 0;
+            int progCreated = CreateMissingProgramAssets(silent: false);
+
+            EditorUtility.DisplayDialog(
+                "KawaPlayer PlaylistViewer",
+                "U# Assembly Definitions created: " + asmCreated + "\n"
+                + "U# Program Assets created: " + progCreated + "\n\n"
+                + "If counts are 0, all assets were already in place.",
+                "OK");
         }
 
-        private static void CreateMissingInternal(bool silent)
+        // ===== (1) U# Assembly Definition =====
+
+        /// <summary>
+        /// Runtime asmdef を指す UdonSharpAssemblyDefinition (.asset) を必要に応じて生成。
+        /// 戻り値: 新規作成したら true。
+        /// </summary>
+        private static bool EnsureUdonSharpAssemblyDefinition(bool silent)
         {
+            try
+            {
+                string asmdefPath = PackageRuntimePath + "/" + RuntimeAsmdefName + ".asmdef";
+                AssemblyDefinitionAsset asmdef = AssetDatabase.LoadAssetAtPath<AssemblyDefinitionAsset>(asmdefPath);
+                if (asmdef == null)
+                {
+                    if (!silent) Debug.LogError("[PlaylistViewer] AssemblyDefinitionAsset not found at: " + asmdefPath);
+                    return false;
+                }
+
+                string usharpDefPath = PackageRuntimePath + "/" + RuntimeAsmdefName + ".asset";
+                if (AssetDatabase.LoadAssetAtPath<UdonSharpAssemblyDefinition>(usharpDefPath) != null)
+                {
+                    return false; // 既存
+                }
+
+                UdonSharpAssemblyDefinition def = ScriptableObject.CreateInstance<UdonSharpAssemblyDefinition>();
+                def.sourceAssembly = asmdef;
+                AssetDatabase.CreateAsset(def, usharpDefPath);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                Debug.Log("[PlaylistViewer] Created U# Assembly Definition: " + usharpDefPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (!silent) Debug.LogException(ex);
+                return false;
+            }
+        }
+
+        // ===== (2) UdonSharpProgramAsset (per UdonSharpBehaviour subclass) =====
+
+        /// <summary>
+        /// Runtime アセンブリ内の UdonSharpBehaviour 派生クラスごとに .asset を生成。
+        /// 戻り値: 新規作成数。
+        /// </summary>
+        private static int CreateMissingProgramAssets(bool silent)
+        {
+            int created = 0;
             try
             {
                 Assembly runtimeAsm = typeof(PlaylistViewerController).Assembly;
                 Type usbType = typeof(UdonSharpBehaviour);
 
-                var udonSharpTypes = runtimeAsm.GetTypes()
+                Type[] udonSharpTypes = runtimeAsm.GetTypes()
                     .Where(t => t != null
                                 && t.IsSubclassOf(usbType)
                                 && !t.IsAbstract
@@ -56,15 +123,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                                 && t.Namespace.StartsWith(TargetNamespace))
                     .ToArray();
 
-                int created = 0;
-                int skipped = 0;
                 foreach (Type t in udonSharpTypes)
                 {
-                    // 既存 program asset があればスキップ
                     UdonSharpProgramAsset existing = UdonSharpEditorUtility.GetUdonSharpProgramAsset(t);
-                    if (existing != null) { skipped++; continue; }
+                    if (existing != null) continue;
 
-                    // 対応する MonoScript を AssetDatabase から検索
                     MonoScript script = FindMonoScriptForType(t);
                     if (script == null)
                     {
@@ -76,19 +139,14 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                     if (string.IsNullOrEmpty(scriptPath)) continue;
                     string assetPath = Path.ChangeExtension(scriptPath, ".asset");
 
-                    if (AssetDatabase.LoadAssetAtPath<UdonSharpProgramAsset>(assetPath) != null)
-                    {
-                        // 既に物理 file がある (cache 未反映)
-                        skipped++;
-                        continue;
-                    }
+                    if (AssetDatabase.LoadAssetAtPath<UdonSharpProgramAsset>(assetPath) != null) continue;
 
                     UdonSharpProgramAsset asset = ScriptableObject.CreateInstance<UdonSharpProgramAsset>();
                     SerializedObject so = new SerializedObject(asset);
                     SerializedProperty sourceProp = so.FindProperty("sourceCsScript");
                     if (sourceProp == null)
                     {
-                        Debug.LogError("[PlaylistViewer] UdonSharpProgramAsset has no 'sourceCsScript' property — UdonSharp internal layout may have changed.");
+                        Debug.LogError("[PlaylistViewer] UdonSharpProgramAsset.sourceCsScript not found — UdonSharp internal layout may have changed.");
                         UnityEngine.Object.DestroyImmediate(asset);
                         continue;
                     }
@@ -104,23 +162,14 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                 {
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
-                    Debug.Log("[PlaylistViewer] Created " + created + " new UdonSharp Program Assets (skipped " + skipped + " already-present).");
-                }
-                else if (!silent)
-                {
-                    EditorUtility.DisplayDialog(
-                        "KawaPlayer PlaylistViewer",
-                        "All " + skipped + " UdonSharp Program Assets are already in place. No new assets were created.",
-                        "OK");
+                    Debug.Log("[PlaylistViewer] Created " + created + " new UdonSharp Program Assets.");
                 }
             }
             catch (Exception ex)
             {
-                if (!silent)
-                {
-                    Debug.LogException(ex);
-                }
+                if (!silent) Debug.LogException(ex);
             }
+            return created;
         }
 
         private static MonoScript FindMonoScriptForType(Type t)
