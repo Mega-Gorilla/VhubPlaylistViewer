@@ -4,9 +4,10 @@
     "references": [
         "VRC.SDKBase",
         "VRC.SDK3",
-        "VRC.SDK3.Data",
         "VRC.Udon",
+        "VRC.Udon.Serialization.OdinSerializer",
         "UdonSharp.Runtime",
+        "UdonSharp.Lib",
         "Unity.TextMeshPro"
     ],
     "includePlatforms": [],

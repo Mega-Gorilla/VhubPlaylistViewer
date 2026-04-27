@@ -80,7 +80,8 @@ $RECYCLE.BIN/
 
 # --- 本プロジェクト固有 ---
 # 外部の参考実装（ライセンス制約 / 重い / 配布物には不要）
-_references/
+# `~` 終端で Unity が無視するフォルダにしている
+_references~/
 
 # AI 補助ツール用ローカルキャッシュ
 .claude/local/

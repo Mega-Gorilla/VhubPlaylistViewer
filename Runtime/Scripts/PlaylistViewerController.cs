@@ -26,7 +26,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         // ----- 設定 -----
         [Header("Server")]
         [SerializeField] private string _baseUrl = "https://playlist.vrc-hub.com";
-        [SerializeField] private string _resolvePoolId = "playlist";
 
         [Header("Children (アサイン必須)")]
         [SerializeField] private ListingClient _listingClient;
