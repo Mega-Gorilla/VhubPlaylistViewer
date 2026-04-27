@@ -1,0 +1,26 @@
+{
+    "name": "MegaGorilla.KawaPlayer.PlaylistViewer.Editor",
+    "rootNamespace": "MegaGorilla.KawaPlayer.PlaylistViewer.Editor",
+    "references": [
+        "MegaGorilla.KawaPlayer.PlaylistViewer.Runtime",
+        "VRC.SDKBase",
+        "VRC.SDKBase.Editor",
+        "VRC.SDK3",
+        "VRC.SDK3.Editor",
+        "VRC.Udon",
+        "UdonSharp.Runtime",
+        "UdonSharp.Editor",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

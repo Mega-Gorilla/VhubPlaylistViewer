@@ -1,0 +1,14 @@
+{
+  "name": "com.vhub.kawaplayer-playlistviewer",
+  "displayName": "KawaPlayer PlaylistViewer",
+  "version": "0.0.1",
+  "unity": "2022.3",
+  "description": "VRChat world UI to search and view VHub PlayList playlists. Standalone unitypackage; users copy resolve URLs into KawaPlayer or other video players.",
+  "author": {
+    "name": "Mega-Gorilla",
+    "url": "https://github.com/Mega-Gorilla/KawaPlayer_PlaylistViewer"
+  },
+  "vpmDependencies": {
+    "com.vrchat.worlds": ">=3.8.1"
+  }
+}

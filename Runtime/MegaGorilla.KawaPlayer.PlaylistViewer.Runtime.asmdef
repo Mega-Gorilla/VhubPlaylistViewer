@@ -1,0 +1,21 @@
+{
+    "name": "MegaGorilla.KawaPlayer.PlaylistViewer.Runtime",
+    "rootNamespace": "MegaGorilla.KawaPlayer.PlaylistViewer",
+    "references": [
+        "VRC.SDKBase",
+        "VRC.SDK3",
+        "VRC.SDK3.Data",
+        "VRC.Udon",
+        "UdonSharp.Runtime",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
