@@ -56,7 +56,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private TextMeshProUGUI _pageLabel;
         private TextMeshProUGUI _detailPlaylistName;
         private TextMeshProUGUI _detailOwnerName;
-        private TextMeshProUGUI _detailTrackCount;
+        private TextMeshProUGUI _detailTotalTracks;
         private TMP_InputField _detailUrlField;
         private Animator _animator;
 
@@ -65,6 +65,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private int _currentPage;
         private string _currentTab;       // "popular" / "recent" / "search"
         private string _currentPlaylistId;
+        private string _pendingOwnerName; // SelectResult 時に listing item から carry over
         private string _trackCountUnit;
 
         // 検索結果のキャッシュ (DataDictionary 直保持)
@@ -114,7 +115,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                     case "#PageLabel": _pageLabel = t.GetComponent<TextMeshProUGUI>(); break;
                     case "#PlaylistName": _detailPlaylistName = t.GetComponent<TextMeshProUGUI>(); break;
                     case "#OwnerName": _detailOwnerName = t.GetComponent<TextMeshProUGUI>(); break;
-                    case "#TrackCount": _detailTrackCount = t.GetComponent<TextMeshProUGUI>(); break;
+                    // 注: detail view では #TotalTracks を使う。per-row 側の #TrackCount との衝突回避のため
+                    case "#TotalTracks": _detailTotalTracks = t.GetComponent<TextMeshProUGUI>(); break;
                     case "#UrlField": _detailUrlField = t.GetComponent<TMP_InputField>(); break;
                 }
             }
@@ -307,7 +309,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
             // 詳細ビュー描画
             if (_detailPlaylistName != null) _detailPlaylistName.text = name;
-            if (_detailTrackCount != null) _detailTrackCount.text = (tracks != null ? tracks.Count.ToString() : "0") + " " + _trackCountUnit;
+            if (_detailOwnerName != null) _detailOwnerName.text = _pendingOwnerName != null ? _pendingOwnerName : "";
+            if (_detailTotalTracks != null) _detailTotalTracks.text = (tracks != null ? tracks.Count.ToString() : "0") + " " + _trackCountUnit;
             if (_detailUrlField != null) _detailUrlField.text = _baseUrl + "/r/default/" + playlistId;
 
             _currentPlaylistId = playlistId;
@@ -421,6 +424,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             string playlistId = "";
             if (item.TryGetValue("id", out idToken) && idToken.TokenType == TokenType.String) playlistId = idToken.String;
 
+            // ownerName は detail API のレスポンスに含まれないので、ここで listing item から拾って保存
+            DataToken ownerToken;
+            _pendingOwnerName = "";
+            if (item.TryGetValue("ownerName", out ownerToken) && ownerToken.TokenType == TokenType.String) _pendingOwnerName = ownerToken.String;
+
             int resolveIndex = TryGetInt(item, "resolveIndex", -1);
             if (resolveIndex < 0 || playlistId.Length == 0)
             {
@@ -460,12 +468,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 for (int j = 0; j < cs.Length; j++)
                 {
                     Transform c = cs[j];
-                    if (c.name == "*Position")
+                    if (c.name == "#Position")
                     {
                         TextMeshProUGUI tmp = c.GetComponent<TextMeshProUGUI>();
                         if (tmp != null) tmp.text = (i + 1).ToString();
                     }
-                    else if (c.name == "*Title")
+                    else if (c.name == "#Title")
                     {
                         DataToken titleToken;
                         string title = "";

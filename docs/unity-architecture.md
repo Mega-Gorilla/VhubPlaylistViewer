@@ -68,9 +68,17 @@ prefab 内の子 GameObject 名で、用途を区別する:
 
 | プレフィックス | 意味 |
 |---|---|
-| `#XXX` | スクリプトが `Start()` で `GetComponentsInChildren<Transform>()` で探してバインドする要素 |
+| `#XXX` | スクリプトが (Start() でバインド or per-row 描画時に) アクセスする要素。読み取り / 書き込み問わず |
 | `*XXX` | デザイナーが自由に編集できる装飾要素。スクリプトは触らない |
 | (なし) | グルーピング用の中間オブジェクト。スクリプトの関心外 |
+
+**重要: `BindHierarchy()` は `GetComponentsInChildren<Transform>(true)` で**インアクティブな子も含めて深さ優先で全走査**するため、テンプレート (例: `#ResultTemplate`, `#TrackTemplate`) の中にも同名の `#XXX` があると先に hit して上書きされる。これを避けるためトップレベル binding 名はテンプレート内 binding 名と被らせない:
+
+| トップレベル (1 個だけ存在) | テンプレート内 (per-row, 複数 clone) |
+|---|---|
+| `#PlaylistName` (詳細ビュー) | `#Name` (検索結果カード) |
+| `#OwnerName` (詳細ビュー) | `#Owner` (検索結果カード) |
+| `#TotalTracks` (詳細ビュー、playlist 総トラック数) | `#TrackCount` (検索結果カード、playlist の trackCount) |
 
 **主要な `#`-prefix 要素一覧** (実装の `Start()` で参照される):
 
@@ -90,17 +98,17 @@ PlaylistViewer (PlaylistViewerController)
 │   │   │       ├── #Owner           (TMP_Text)
 │   │   │       ├── #TrackCount      (TMP_Text)
 │   │   │       └── #SelectButton    (Button)
-│   │   ├── #PrevPageBtn / #NextPageBtn / *PageLabel
+│   │   ├── #PrevPageBtn / #NextPageBtn / #PageLabel
 │   │   ├── #LoadingOverlay
 │   │   └── #ErrorOverlay
 │   │       └── #ErrorMessage        (TMP_Text)
 │   └── #DetailView
-│       ├── *PlaylistName / *OwnerName / *TrackCount
+│       ├── #PlaylistName / #OwnerName / #TotalTracks
 │       ├── #UrlField                (TMP_InputField, readOnly)
 │       ├── #TrackListContent
 │       │   └── #TrackTemplate
-│       │       ├── *Position
-│       │       └── *Title
+│       │       ├── #Position
+│       │       └── #Title
 │       └── #BackButton
 └── Keypad3D                          (Keypad3D)
     └── (KeypadKey ×多数)             (KeypadKey)
