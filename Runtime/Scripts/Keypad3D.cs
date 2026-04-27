@@ -1,28 +1,33 @@
 using UdonSharp;
+using TMPro;
 using UnityEngine;
 using VRC.SDKBase;
-using VRC.SDK3.Components;
 
 namespace MegaGorilla.KawaPlayer.PlaylistViewer
 {
     /// <summary>
-    /// 3D キーパッド (Search 用)。子の KeypadKey から呼ばれて文字を _targetField に append する。
+    /// 3D キーパッド。子の KeypadKey から呼ばれて文字を _targetField に append する汎用ユーティリティ。
     ///
-    /// _targetField の text は API URL プレフィックス (_prefix) で始まる前提。Backspace 等で
+    /// **v1 では Search との連携には使われていない**: Udon は VRCUrlInputField.text 設定を
+    /// 公開していないため、3D キーパッドから検索 URL を組み立てることができない。Search 入力は
+    /// VRCUrlInputField + VRChat 内蔵キーボード方式 (Copy/Paste 含む) で実現する。
+    /// 本クラスは将来の汎用 TMP_InputField への入力手段として残す。
+    ///
+    /// _targetField の text は固定プレフィックス (_prefix) で始まる前提。Backspace 等で
     /// プレフィックス領域を消さないよう範囲制限する。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class Keypad3D : UdonSharpBehaviour
     {
         [Header("Target")]
-        [Tooltip("キー入力で書き換える VRCUrlInputField (Search 用)")]
-        [SerializeField] private VRCUrlInputField _targetField;
+        [Tooltip("キー入力で書き換える TMP_InputField")]
+        [SerializeField] private TMP_InputField _targetField;
 
-        [Tooltip("ロックされたプレフィックス (= API URL の固定部分)")]
-        [SerializeField] private string _prefix = "https://playlist.vrc-hub.com/api/vrc/playlists/search?q=";
+        [Tooltip("ロックされたプレフィックス (Backspace で消えない固定部分)。空文字なら制約なし")]
+        [SerializeField] private string _prefix = "";
 
-        [Header("Submit")]
-        [Tooltip("Enter キーで呼ばれるコントローラー")]
+        [Header("Submit (任意)")]
+        [Tooltip("Enter キーで呼ばれるコントローラー (v1 では未連携)")]
         [SerializeField] private PlaylistViewerController _controller;
 
         [Tooltip("入力可能な最大クエリ長 (プレフィックスを含まない)")]
@@ -75,11 +80,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         public void Submit()
         {
+            // v1 では未連携。将来 _controller 経由のイベント発火に使う想定。
             if (_targetField == null) return;
             EnsurePrefix();
-            string current = _targetField.text;
-            if (current.Length <= _prefix.Length) return; // 空クエリは送らない
-            if (_controller != null) _controller.OnTabSearch();
         }
     }
 }
