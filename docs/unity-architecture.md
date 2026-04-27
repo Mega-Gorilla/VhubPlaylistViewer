@@ -251,7 +251,7 @@ KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲す
 | `ThumbnailLoader` | サムネ画像の GET、Texture2D プール管理 | VRC.SDK3.Image |
 | `Keypad3D` | 3D キーパッドの親、文字 append/backspace/submit | UnityEngine.UI |
 | `KeypadKey` | 個別キー、Interact で親に SendCustomEvent | (Udon Interact) |
-| `ResultRow` (#12 で追加予定) | 結果カードの 1 行分の状態 (固定 `_index`)、`Button.onClick` を受けて `Controller.OnSelectResultByIndex(_index)` を呼ぶ | (Udon) |
+| `ResultRow` | 結果カードの 1 行分の状態 (固定 `_index`)、`SetData(name, owner, trackCount, thumbIndex)` で表示更新、`#SelectButton.onClick` → `OnSelect` → `Controller.OnSelectResultByIndex(_index)` | UnityEngine.UI, TMPro |
 
 すべて `[UdonBehaviourSyncMode(BehaviourSyncMode.None)]`。
 

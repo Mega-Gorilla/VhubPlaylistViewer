@@ -38,16 +38,18 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private float _autoLoadDelay = 2f;
         [SerializeField] private int _pageSize = 20;
 
+        [Header("Result rows (Pre-allocated, 20 行を prefab に物理配置して各行に ResultRow をアタッチ)")]
+        [Tooltip("固定 20 行の ResultRow 参照。prefab で 0..19 の順に並べる")]
+        [SerializeField] private ResultRow[] _resultRows = new ResultRow[0];
+
         [Header("i18n")]
         [Tooltip("CSV: lang,word,lang,word,... (\"en\" / \"ja\" など)")]
         [SerializeField] private string _trackCountUnits = "en,tracks,ja,曲";
 
         // ----- Hierarchy 自動バインド要素 (#-prefix) -----
-        // SearchView
+        // SearchView (#ResultListContent / #ResultTemplate は廃止: ResultRow Pre-allocated 方式)
         private GameObject _searchView;
         private GameObject _detailView;
-        private GameObject _resultListContent;
-        private GameObject _resultTemplate;
         private GameObject _trackListContent;
         private GameObject _trackTemplate;
         private GameObject _loadingOverlay;
@@ -105,8 +107,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 {
                     case "#SearchView": _searchView = t.gameObject; break;
                     case "#DetailView": _detailView = t.gameObject; break;
-                    case "#ResultListContent": _resultListContent = t.gameObject; break;
-                    case "#ResultTemplate": _resultTemplate = t.gameObject; break;
                     case "#TrackListContent": _trackListContent = t.gameObject; break;
                     case "#TrackTemplate": _trackTemplate = t.gameObject; break;
                     case "#LoadingOverlay": _loadingOverlay = t.gameObject; break;
@@ -319,101 +319,50 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             return true;
         }
 
-        // ----- UI 描画 (テンプレートクローン式) -----
+        // ----- UI 描画 -----
 
+        /// <summary>
+        /// Pre-allocated 20 行方式: _resultRows[] (固定) を順に走査し、count まで SetData、
+        /// 余剰は Hide。動的 Instantiate しない (docs/unity-architecture.md §5.3 参照)。
+        /// </summary>
         private void RenderResultList()
         {
-            if (_resultListContent == null || _resultTemplate == null) return;
+            if (_resultRows == null || _resultRows.Length == 0) return;
 
-            ClearChildrenExceptTemplate(_resultListContent.transform, _resultTemplate);
+            int itemCount = _currentItems != null ? _currentItems.Count : 0;
+            int slotCount = _resultRows.Length;
 
-            if (_currentItems == null || _currentItems.Count == 0) return;
-
-            RectTransform parent = (RectTransform)_resultListContent.transform;
-            RectTransform tmpl = (RectTransform)_resultTemplate.transform;
-            float h = tmpl.sizeDelta.y;
-            Vector2 origPos = tmpl.anchoredPosition;
-
-            for (int i = 0; i < _currentItems.Count; i++)
+            for (int i = 0; i < slotCount; i++)
             {
-                if (_currentItems[i].TokenType != TokenType.DataDictionary) continue;
+                ResultRow row = _resultRows[i];
+                if (row == null) continue;
+
+                if (i >= itemCount)
+                {
+                    row.Hide();
+                    continue;
+                }
+
+                if (_currentItems[i].TokenType != TokenType.DataDictionary)
+                {
+                    row.Hide();
+                    continue;
+                }
                 DataDictionary item = _currentItems[i].DataDictionary;
 
-                GameObject row = Instantiate(_resultTemplate);
-                RectTransform rt = (RectTransform)row.transform;
-                rt.SetParent(parent, false);
-                rt.anchoredPosition = origPos - new Vector2(0, h * i);
-                row.SetActive(true);
-                row.name = i.ToString();
+                string name = TryGetString(item, "name", "");
+                string owner = TryGetString(item, "ownerName", "");
+                int trackCount = TryGetInt(item, "trackCount", 0);
+                int thumbIndex = TryGetInt(item, "thumbIndex", -1);
 
-                BindRowFields(row.transform, item);
+                row.SetTrackCountSuffix(" " + _trackCountUnit);
+                row.SetData(name, owner, trackCount, thumbIndex);
             }
-            parent.sizeDelta = new Vector2(parent.sizeDelta.x, h * _currentItems.Count);
-        }
-
-        private void BindRowFields(Transform row, DataDictionary item)
-        {
-            Transform[] children = row.GetComponentsInChildren<Transform>(true);
-            for (int i = 0; i < children.Length; i++)
-            {
-                Transform c = children[i];
-                if (c.name.Length == 0 || c.name[0] != '#') continue;
-
-                switch (c.name)
-                {
-                    case "#Name":
-                        SetTextFromItem(c, item, "name");
-                        break;
-                    case "#Owner":
-                        SetTextFromItem(c, item, "ownerName");
-                        break;
-                    case "#TrackCount":
-                        {
-                            int n = TryGetInt(item, "trackCount", 0);
-                            TextMeshProUGUI tmp = c.GetComponent<TextMeshProUGUI>();
-                            if (tmp != null) tmp.text = n.ToString() + " " + _trackCountUnit;
-                        }
-                        break;
-                    case "#Thumbnail":
-                        {
-                            int thumbIdx = TryGetInt(item, "thumbIndex", -1);
-                            RawImage ri = c.GetComponent<RawImage>();
-                            if (_thumbnailLoader != null && ri != null && thumbIdx >= 0)
-                            {
-                                _thumbnailLoader.LoadThumbnail(thumbIdx, ri);
-                            }
-                        }
-                        break;
-                    case "#SelectButton":
-                        // Button の onClick から OnSelectResult が呼ばれる想定
-                        // 行 index は GameObject 名 (= row.name) から逆引き
-                        break;
-                }
-            }
-        }
-
-        private static void SetTextFromItem(Transform c, DataDictionary item, string key)
-        {
-            DataToken token;
-            string val = "";
-            if (item.TryGetValue(key, out token) && token.TokenType == TokenType.String) val = token.String;
-            TextMeshProUGUI tmp = c.GetComponent<TextMeshProUGUI>();
-            if (tmp != null) tmp.text = val;
         }
 
         /// <summary>
-        /// 結果カードの SelectButton から呼ばれる。row index を引数 (string) で取り出すために、
-        /// 各 Button の onClick で SendCustomEvent("OnSelectResultIndex0") などで分岐する想定だが、
-        /// それは Udon の制約上面倒なので、prefab 側で Button の onClick から GameObject 名読みのアプローチ。
-        /// この実装は v2 で改善可。
+        /// ResultRow.OnSelect から呼ばれる。Pre-allocated 各行が自身の固定 _index を渡してくる。
         /// </summary>
-        public void OnSelectResultByName(string indexName)
-        {
-            int idx;
-            if (!int.TryParse(indexName, out idx)) return;
-            OnSelectResultByIndex(idx);
-        }
-
         public void OnSelectResultByIndex(int rowIndex)
         {
             if (_currentItems == null || rowIndex < 0 || rowIndex >= _currentItems.Count) return;
@@ -504,6 +453,14 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             DataToken t;
             if (!dict.TryGetValue(key, out t)) return defaultVal;
             if (t.TokenType == TokenType.Double) return (int)t.Double;
+            return defaultVal;
+        }
+
+        private static string TryGetString(DataDictionary dict, string key, string defaultVal)
+        {
+            DataToken t;
+            if (!dict.TryGetValue(key, out t)) return defaultVal;
+            if (t.TokenType == TokenType.String) return t.String;
             return defaultVal;
         }
 
