@@ -294,6 +294,22 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 return false;
             }
 
+            // Defensive id 検証 (server-api-spec.md v2 §4.6 / §5.2):
+            // /r/default/{playlistId} レスポンスに id が入る (新仕様)。listing で得た
+            // playlistId と不一致なら playlist pool 衝突 (LRU 永久化されているはずだが
+            // 二重防衛として) を検出してエラー扱いにする。
+            // server 側が id を返さない (旧 API) 場合はチェックをスキップ。
+            DataToken idToken;
+            if (rootDict.TryGetValue("id", out idToken) && idToken.TokenType == TokenType.String)
+            {
+                string responseId = idToken.String;
+                if (responseId != playlistId)
+                {
+                    ReportError("Playlist id mismatch (expected " + playlistId + ", got " + responseId + ") — pool may be inconsistent");
+                    return false;
+                }
+            }
+
             // name
             string name = "(no name)";
             DataToken nameToken;

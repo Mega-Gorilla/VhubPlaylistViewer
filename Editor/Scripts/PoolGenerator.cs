@@ -137,8 +137,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             VRCUrl[] resolveUrls = BuildPool(baseUrl + "/vrcurl/" + opts.ResolvePoolId + "/{i}", opts.ResolvePoolSize);
             AssignPrivateField(resolver, "_resolvePool", resolveUrls);
 
-            // 2. Thumb pool: baseUrl/thumb/{ThumbPoolId}/{i}
-            VRCUrl[] thumbUrls = BuildPool(baseUrl + "/thumb/" + opts.ThumbPoolId + "/{i}", opts.ThumbPoolSize);
+            // 2. Thumb pool: baseUrl/vrcurl/{ThumbPoolId}/{i}
+            //    (server-api-spec.md v2 §4.4/§4.5: 専用 /thumb は廃止、既存 /vrcurl/{poolId}/{index} を whitelist 拡張で再利用)
+            VRCUrl[] thumbUrls = BuildPool(baseUrl + "/vrcurl/" + opts.ThumbPoolId + "/{i}", opts.ThumbPoolSize);
             AssignPrivateField(thumbnailLoader, "_thumbPool", thumbUrls);
 
             // 3. Popular page pool: baseUrl/api/vrc/playlists/popular?p={i}

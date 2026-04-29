@@ -8,7 +8,9 @@ using VRC.Udon.Common.Interfaces;
 namespace MegaGorilla.KawaPlayer.PlaylistViewer
 {
     /// <summary>
-    /// /thumb/{poolId}/{index} 経由でサムネ画像を取得する。
+    /// /vrcurl/default-thumb/{index} 経由でサムネ画像を取得する。
+    /// (server-api-spec.md v2 §4.4/§4.5: 旧 /thumb/... は廃案、既存 /vrcurl/{poolId}/{index}
+    ///  の poolId ホワイトリスト拡張で同等機構を再利用)
     /// 同じ thumbIndex のリクエストはキャッシュ命中。
     ///
     /// 制約:

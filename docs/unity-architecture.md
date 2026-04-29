@@ -203,7 +203,7 @@ stateDiagram-v2
 | フィールド | 内容 | サイズ目安 |
 |---|---|---|
 | `_resolvePool: VRCUrl[]` | `https://playlist.vrc-hub.com/vrcurl/playlist/{0..N-1}` | 1024 (= 同時表示できる playlist 上限) |
-| `_thumbPool: VRCUrl[]` | `https://playlist.vrc-hub.com/thumb/default-thumb/{0..M-1}` | 1024 |
+| `_thumbPool: VRCUrl[]` | `https://playlist.vrc-hub.com/vrcurl/default-thumb/{0..M-1}` (server-api-spec v2: 旧 `/thumb/...` 廃案、既存 `/vrcurl/...` 流用) | 1024 |
 | `_popularPagePool: VRCUrl[]` | `https://playlist.vrc-hub.com/api/vrc/playlists/popular?p={0..P-1}` | 50 (= 1000 件まで閲覧可) |
 | `_recentPagePool: VRCUrl[]` | `https://playlist.vrc-hub.com/api/vrc/playlists/recent?p={0..P-1}` | 50 |
 
