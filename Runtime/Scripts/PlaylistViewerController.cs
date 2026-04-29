@@ -294,7 +294,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 return false;
             }
 
-            // Defensive id 検証 (server-api-spec.md v3 §4.6 / §5.2、strict mode):
+            // Defensive id 検証 (server-api-spec.md §4.6 / §5.2、strict mode):
             // /r/default/{playlistId} レスポンスは id を**必ず**返す。listing で得た
             // playlistId と不一致なら playlist pool 衝突 (永久化されているはずだが
             // 二重防衛として) を検出してエラー扱いにする。
@@ -302,7 +302,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             DataToken idToken;
             if (!rootDict.TryGetValue("id", out idToken) || idToken.TokenType != TokenType.String)
             {
-                Debug.LogWarning("[PlaylistViewer] Resolve response missing 'id' field — server not conformant to spec v3 §4.6");
+                Debug.LogWarning("[PlaylistViewer] Resolve response missing 'id' field — server not conformant to spec §4.6");
                 ReportError("Resolve response missing playlist id");
                 return false;
             }

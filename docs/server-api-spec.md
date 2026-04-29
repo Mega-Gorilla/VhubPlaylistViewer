@@ -300,7 +300,7 @@ async function register(poolId: string, url: string): Promise<number> {
 
 `/r/.../{playlistId}` のレスポンスに `id` を含める (§4.6) ことで、クライアントは strict mode で検証する:
 
-- **`id` フィールドが無い** → サーバーが spec v3 §4.6 非準拠 → `ReportError` で error state に遷移
+- **`id` フィールドが無い** → サーバーが spec §4.6 非準拠 → `ReportError` で error state に遷移
 - **`id` が listing 時の `playlistId` と不一致** → playlist pool 衝突等の異常 → 同様に error state
 
 ```csharp
@@ -308,7 +308,7 @@ async function register(poolId: string, url: string): Promise<number> {
 DataToken idToken;
 if (!rootDict.TryGetValue("id", out idToken) || idToken.TokenType != TokenType.String)
 {
-    Debug.LogWarning("[PlaylistViewer] Resolve response missing 'id' field — server not conformant to spec v3 §4.6");
+    Debug.LogWarning("[PlaylistViewer] Resolve response missing 'id' field — server not conformant to spec §4.6");
     ReportError("Resolve response missing playlist id");
     return false;
 }
