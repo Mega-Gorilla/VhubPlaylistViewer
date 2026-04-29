@@ -296,21 +296,37 @@ async function register(poolId: string, url: string): Promise<number> {
 - プレイリスト総数 (公開) 想定: 〜数万。100k で当面十分
 - 動画サムネ: 動画数 × 解像度 = 同上
 
-### 5.2 LRU 衝突に対する client 側 defensive
+### 5.2 LRU 衝突に対する client 側 defensive (strict mode)
 
-`/r/.../{playlistId}` のレスポンスに `id` を含める (§4.6) ことで、クライアントは:
+`/r/.../{playlistId}` のレスポンスに `id` を含める (§4.6) ことで、クライアントは strict mode で検証する:
+
+- **`id` フィールドが無い** → サーバーが spec §4.6 非準拠 → `ReportError` で error state に遷移
+- **`id` が listing 時の `playlistId` と不一致** → playlist pool 衝突等の異常 → 同様に error state
 
 ```csharp
 // クライアント側擬似コード (PlaylistViewerController.ParseDetailJson)
-string responseId = TryGetString(rootDict, "id", "");
-if (responseId != _expectedPlaylistId)
+DataToken idToken;
+if (!rootDict.TryGetValue("id", out idToken) || idToken.TokenType != TokenType.String)
 {
-    ReportError("Playlist id mismatch — pool may be inconsistent");
+    Debug.LogWarning("[PlaylistViewer] Resolve response missing 'id' field — server not conformant to spec §4.6");
+    ReportError("Resolve response missing playlist id");
+    return false;
+}
+string responseId = idToken.String;
+if (responseId != playlistId)
+{
+    Debug.LogWarning("[PlaylistViewer] id mismatch: expected=" + playlistId + " got=" + responseId);
+    ReportError("Playlist id mismatch");
     return false;
 }
 ```
 
-server-side の永久 pool でほぼ起きないが、二重防衛として実装。
+**Strict mode を採用する理由** (pre-release 期):
+- Server bug を早期発見 (spec 違反が silent skip にならず、即 error state)
+- 永久 pool (server-side primary defense) と一貫した責務分担 (両方とも strict)
+- `Debug.LogWarning` で詳細情報をログに残し、`ReportError` 経由の UI 表示 (`#ErrorMessage`) は短文 (UX 配慮)
+
+将来 VPM 配布後に互換性が必要になったら、その時点で lenient 化を検討する。
 
 ## 6. レート制限
 
