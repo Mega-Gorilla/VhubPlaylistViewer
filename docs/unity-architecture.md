@@ -1,4 +1,4 @@
-# KawaPlayer PlaylistViewer — Unity 側アーキテクチャ
+# VHub PlaylistViewer — Unity 側アーキテクチャ
 
 > **対象**: 本リポジトリの Unity / UdonSharp 実装。
 > **前提**: サーバー側仕様は [`server-api-spec.md`](./server-api-spec.md) を参照。
@@ -213,7 +213,7 @@ stateDiagram-v2
 
 `PoolGeneratorWindow` (Editor) が以下を行う:
 
-1. ユーザーが **Tools > KawaPlayer PlaylistViewer > Generate Pools** を開く
+1. ユーザーが **Tools > VHub PlaylistViewer > Generate Pools** を開く
 2. シーン中の `PlaylistViewerController` を選択
 3. Base URL / Pool ID / 各 pool サイズを設定
 4. **Validate** ボタンで `/r/{poolId}/_validate` を叩いて疎通確認
