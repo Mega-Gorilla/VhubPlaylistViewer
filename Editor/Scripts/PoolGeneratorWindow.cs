@@ -4,7 +4,7 @@ using UnityEngine;
 namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
 {
     /// <summary>
-    /// Tools > KawaPlayer PlaylistViewer > Generate Pools から開く Editor Window。
+    /// Tools > VHub PlaylistViewer > Generate Pools から開く Editor Window。
     /// シーン中の PlaylistViewerController を選択して 4 種 pool を一括ベイク生成する。
     /// </summary>
     public class PoolGeneratorWindow : EditorWindow
@@ -24,7 +24,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
         private string _statusMessage = "";
         private MessageType _statusType = MessageType.Info;
 
-        [MenuItem("Tools/KawaPlayer PlaylistViewer/Generate Pools")]
+        [MenuItem("Tools/VHub PlaylistViewer/Generate Pools")]
         public static void Open()
         {
             PoolGeneratorWindow w = GetWindow<PoolGeneratorWindow>("PlaylistViewer Pool Generator");
@@ -45,7 +45,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
 
         private void OnGUI()
         {
-            EditorGUILayout.LabelField("KawaPlayer PlaylistViewer — Pool Generator", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("VHub PlaylistViewer — Pool Generator", EditorStyles.boldLabel);
             EditorGUILayout.Space(8);
 
             EditorGUI.BeginChangeCheck();

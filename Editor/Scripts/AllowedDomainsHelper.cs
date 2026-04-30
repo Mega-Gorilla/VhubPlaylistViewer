@@ -28,7 +28,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                 "セットアップ手順:\n" +
                 "1. VRChat Web > My Worlds > 該当ワールド > Video Player Allowed Domains に\n" +
                 "   '" + DOMAIN + "' を追加\n" +
-                "2. Tools > KawaPlayer PlaylistViewer > Generate Pools で VRCUrl をベイク\n" +
+                "2. Tools > VHub PlaylistViewer > Generate Pools で VRCUrl をベイク\n" +
                 "3. シーンに本 prefab を配置 (KawaPlayer 等の動画プレイヤーは別途配置)\n" +
                 "4. ワールドアップロード後、Viewer で検索 → URL を Copy → KawaPlayer に Paste",
                 MessageType.Info);

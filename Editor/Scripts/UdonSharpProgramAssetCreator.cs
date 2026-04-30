@@ -20,11 +20,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
     ///       Add Component 時に UdonSharpEditorUtility.RunBehaviourSetup から参照される。
     ///
     /// 実行: Unity 起動時 / asmdef リコンパイル後に [InitializeOnLoadMethod] で自動。
-    ///       Tools > KawaPlayer PlaylistViewer > Create Missing UdonSharp Program Assets で手動再実行。
+    ///       Tools > VHub PlaylistViewer > Create Missing UdonSharp Program Assets で手動再実行。
     /// </summary>
     public static class UdonSharpProgramAssetCreator
     {
-        const string MenuPath = "Tools/KawaPlayer PlaylistViewer/Create Missing UdonSharp Program Assets";
+        const string MenuPath = "Tools/VHub PlaylistViewer/Create Missing UdonSharp Program Assets";
         const string TargetNamespace = "MegaGorilla.KawaPlayer.PlaylistViewer";
         const string RuntimeAsmdefName = "MegaGorilla.KawaPlayer.PlaylistViewer.Runtime";
         const string PackageRuntimePath = "Packages/com.vhub.kawaplayer-playlistviewer/Runtime";
@@ -55,7 +55,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             int progCreated = CreateMissingProgramAssets(silent: false);
 
             EditorUtility.DisplayDialog(
-                "KawaPlayer PlaylistViewer",
+                "VHub PlaylistViewer",
                 "U# Assembly Definitions created: " + asmCreated + "\n"
                 + "U# Program Assets created: " + progCreated + "\n\n"
                 + "If counts are 0, all assets were already in place.",

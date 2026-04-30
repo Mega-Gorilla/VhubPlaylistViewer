@@ -10,7 +10,7 @@ There are no npm scripts or CLI build tasks in `package.json`; use Unity for com
 
 - Open the package in a Unity 2022.3 project with VRChat Worlds SDK `>=3.8.1`.
 - Let Unity recompile assemblies after edits and fix Console errors before committing.
-- Use `Tools > KawaPlayer PlaylistViewer > Generate Pools` to validate scene-dependent editor tooling.
+- Use `Tools > VHub PlaylistViewer > Generate Pools` to validate scene-dependent editor tooling.
 - Run `git status` before submitting changes to confirm only intended files are modified.
 
 ## Coding Style & Naming Conventions

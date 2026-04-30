@@ -1,4 +1,4 @@
-# KawaPlayer PlaylistViewer
+# VHub PlaylistViewer
 
 VRChat ワールド向けの **VHub PlayList プレイリスト検索 / 閲覧 UI** を提供する unitypackage（開発中）。
 
