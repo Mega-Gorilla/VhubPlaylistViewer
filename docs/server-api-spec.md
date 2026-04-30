@@ -1,11 +1,12 @@
 # VHub PlayList — VRChat 向け検索/閲覧 API 仕様
 
-> **ステータス**: ドラフト v2 (maintainer review 反映済)
+> **ステータス**: ドラフト v3 (改訂後)
 > **対象バージョン**: vhub-playlist (Next.js 16 + Hasura v2.44 + PostgreSQL 16) の追加実装。
 > **クライアント**: VRChat ワールド内 Udon (本リポジトリ `KawaPlayer_PlaylistViewer`)。
 > **改訂履歴**:
 > - 2026-04-27 v1: 初版ドラフト
 > - 2026-04-28 v2: maintainer review 反映 — `/thumb` 廃止 (`/vrcurl/default-thumb` で代替)、`ALLOWED_POOLS` 拡張、playlist pool 永久化、ownerName フォールバック規則、NFKC 正規化、`/r/...` レスポンスに `id` 追加 (defensive 用)
+> - 2026-04-29 v3: vhub-playlist#88 セカンドレビュー反映 — `_validate` を新規実装と訂正、`playlist` pool の削除禁止 (LRU 無効化に加えて) を明文化、`ownerName` フォールバックを `display_name?.trim() || misskey_username || ""` に修正、`recent` / `search` のソート末尾に `id ASC` tie-breaker 追加、`dest_url` 構築を `process.env.NEXT_PUBLIC_SITE_URL` ベース化、検索の制御文字処理を「trim 後、内部に残ったら 400」に統一、運用メトリクスは v1 はログ出力のみ (ダッシュボード化は別 issue)
 
 ## 0. 動機
 
@@ -24,10 +25,13 @@
 | レスポンス形式 | JSON (`Content-Type: application/json`)、UTF-8、改行なし |
 | レート制限 | per-IP (既存 `/r/...` と同基盤を使用) |
 | キャッシュ | レスポンスをインメモリ短期キャッシュ (60秒) |
-| Pool 連携 | 既存 `pool_slots` / `pool_url_index` 機構を `playlist` / `default-thumb` 等の pool ID で再利用 |
+| Pool 連携 | 既存 `pool_slots` / `pool_url_index` 機構を `playlist` / `default-thumb` 等の pool ID で再利用。**`playlist` pool は LRU 無効化 + 削除禁止 (永久保持)**。 |
 | エラー形式 | `{ ok: false, error: "..." }` (既存 `/r/...` と同じ規約) |
 | ページサイズ | 1 ページ = 20 件固定 |
 | Hasura アクセス | API Routes は admin secret 経由 (Hasura permission の追加変更なし) |
+| 検索クエリ正規化 | NFKC + 小文字化 (`q_norm = q.normalize("NFKC").toLowerCase()`) を**バリデーション後・SQL 実行前・キャッシュキー算出前**に適用 |
+| URL 構築 | `dest_url` 等の絶対 URL は **`process.env.NEXT_PUBLIC_SITE_URL`** をベースに組み立てる (staging/dev/本番で同コード) |
+| ソート安定性 | listing/search のすべてのソートは末尾に `id ASC` を tie-breaker として加える (ページング揺れ防止) |
 
 ### 1.1 クライアント側制約 (Udon 側の事情)
 
@@ -53,7 +57,7 @@
 
 サムネ取得とプレイリスト解決は **既存 `GET /vrcurl/{poolId}/{index}`** を `poolId = default-thumb` / `playlist` のホワイトリスト拡張で再利用 (新エンドポイント追加なし)。詳細は §4.5 / §5。
 
-加えて、既存 `GET /r/{poolId}/{playlistId}` のレスポンスに **`id` フィールドを追加** する小修正 (§4.6、defensive 検証用)。
+加えて、既存 `GET /r/{poolId}/{playlistId}` のレスポンスに **`id` フィールドを追加** する小修正 (§4.6、defensive 検証用)、および Editor 用の **新規 `GET /r/{poolId}/_validate` ルート追加** (§4.7、v3 改訂で「既存」表記を訂正)。
 
 ## 3. 共通レスポンス形式
 
@@ -69,7 +73,7 @@
     {
       "id": "V1StGXR8_Z5jdHi6B-myT",   // playlists.id (nanoid 21 字)
       "name": "お気に入りカラオケ",
-      "ownerName": "Mega Gorilla",     // display_name ?? misskey_username ?? "" (フォールバック規則)
+      "ownerName": "Mega Gorilla",     // display_name?.trim() || misskey_username || ""
       "trackCount": 12,
       "resolveIndex": 4321,            // /vrcurl/playlist/{i} の index (§5)
       "thumbIndex": 7,                 // /vrcurl/default-thumb/{i} の index (-1 なら未登録)
@@ -80,10 +84,14 @@
 }
 ```
 
-**`ownerName` フォールバック規則** (重要):
-1. `users.display_name` が NULL でなければ採用
-2. NULL なら `users.misskey_username` を採用
-3. それも NULL なら空文字 `""`
+**`ownerName` のフォールバック規則** (実装で必須):
+
+```ts
+const ownerName =
+  (user.display_name?.trim() || null) ?? user.misskey_username ?? "";
+```
+
+> 単純な `??` チェーンだと `display_name === ""` が "値あり" 扱いになり空文字が返ってしまうため、`trim() || null` を挟んで「空白のみ/未設定」をフォールバック対象にする。`display_name` が NULL/空白のみ/空文字いずれの場合も `misskey_username` にフォールバック、それも NULL なら最終的に空文字 `""`。
 
 **`resolveIndex` の役割**:
 
@@ -91,10 +99,10 @@
 
 具体的には、本仕様では `/r/{poolId}/{playlistId}` を**廃止せず**、新たに以下を追加する:
 
-- `pool_slots` の **`pool_id = "playlist"`** (新規 pool) を導入。`dest_url` には `https://playlist.vrc-hub.com/r/default/{playlistId}` を格納。
-- listing/search のレスポンスを返す際、各 item の `playlistId` に対して `register("playlist", "https://playlist.vrc-hub.com/r/default/{playlistId}")` を実行し、得られた index を `resolveIndex` として埋め込む。
-- クライアントは `_resolvePool[resolveIndex]` (= ベイク済の `https://playlist.vrc-hub.com/vrcurl/playlist/{i}`) を叩く。サーバーは `/vrcurl/playlist/{i}` で 302 を返し、クライアントは `/r/default/{playlistId}` に redirect されて元の resolve API が実行される。
-- ⚠️ **`playlist` pool は LRU 無効化必須** (§5.1)。クライアントのベイク済 VRCUrl[] は配布物として固定なので、index → playlistId の対応がランタイムで上書きされると配布済ワールド全体で resolve がズレる。
+- `pool_slots` の **`pool_id = "playlist"`** (新規 pool, **LRU 無効化 + 削除禁止 = 永久保持**) を導入。`dest_url` には **`${process.env.NEXT_PUBLIC_SITE_URL}/r/default/{playlistId}`** を格納。
+- listing/search のレスポンスを返す際、各 item の `playlistId` に対して `register("playlist", "${SITE_URL}/r/default/${playlistId}")` を実行し、得られた index を `resolveIndex` として埋め込む。
+- クライアントは `_resolvePool[resolveIndex]` (= ベイク済の `${SITE_URL}/vrcurl/playlist/{i}`) を叩く。サーバーは `/vrcurl/playlist/{i}` で 302 を返し、ブラウザ/クライアントは `/r/default/{playlistId}` に redirect されて元の resolve API が実行される。
+- ⚠️ **`playlist` pool は LRU 無効化 + 削除禁止必須** (§5.1)。クライアントのベイク済 VRCUrl[] は配布物として固定なので、index → playlistId の対応がランタイムで上書き or 削除されると配布済ワールド全体で resolve がズレる。
 
 ### 3.2 エラーレスポンス
 
@@ -112,7 +120,10 @@ HTTP ステータス: `200` 正常 / `400` 不正クエリ / `404` 該当なし 
 |---|---|---|---|---|
 | `p` | × | int | 0 | ページ index (0-origin)。最大 49 |
 
-- **ソート**: `playlists.resolve_count DESC`、tie-break `updated_at DESC`
+- **ソート**:
+  1. `playlists.resolve_count DESC`
+  2. `updated_at DESC`
+  3. **`id ASC`** (安定 tie-breaker)
 - **フィルタ**: `is_public = true`
 - **レスポンス**: §3.1 共通スキーマ
 
@@ -122,7 +133,9 @@ HTTP ステータス: `200` 正常 / `400` 不正クエリ / `404` 該当なし 
 |---|---|---|---|---|
 | `p` | × | int | 0 | ページ index。最大 49 |
 
-- **ソート**: `created_at DESC`
+- **ソート**:
+  1. `created_at DESC`
+  2. **`id ASC`** (安定 tie-breaker)
 - **フィルタ**: `is_public = true`
 - **レスポンス**: §3.1 共通スキーマ
 
@@ -133,17 +146,27 @@ HTTP ステータス: `200` 正常 / `400` 不正クエリ / `404` 該当なし 
 | `q` | ○ | string | - | 検索キーワード (URL エンコード済)。**1 文字以上 64 字以下** |
 | `p` | × | int | 0 | ページ index。最大 49 |
 
-#### クエリ正規化 (重要)
+#### バリデーション (実行順)
 
-サーバー受信時に **以下の前処理**を経由してから比較:
+1. URL デコード後の `q` を取得
+2. **前後の空白文字 (`\s` 相当) を trim**
+3. trim 後の長さが 0 → `400`
+4. trim 後の長さが 64 字超 → `400`
+5. **trim 後の文字列の内部に制御文字 (`\p{Cc}`、改行・タブ・NUL 等) が含まれる → `400`**
+6. NFKC 正規化 + 小文字化 → `q_norm = q_trimmed.normalize("NFKC").toLowerCase()`
+7. SQL / キャッシュキーには `q_norm` を使用
 
-1. URL デコード
-2. **NFKC 正規化** (全角・半角を統一: `カラオケ` ≡ `ｶﾗｵｹ`、互換漢字を統一)
-3. **lowercase 化** (`Karaoke` ≡ `karaoke`、ASCII 範囲)
-4. 前後の whitespace trim
+正規化の効果:
+- 全角/半角の差を吸収 (`カラオケ` ≡ `ｶﾗｵｹ`、互換漢字を統一)
+- 大文字小文字を吸収 (`Karaoke` ≡ `karaoke`、ASCII 範囲)
 
 ```ts
-const qNorm = decodeURIComponent(rawQ).normalize("NFKC").toLowerCase().trim();
+// ステップ 1〜6 の実装イメージ
+const qDecoded = decodeURIComponent(rawQ);
+const qTrimmed = qDecoded.trim();
+if (qTrimmed.length === 0 || qTrimmed.length > 64) return 400;
+if (/\p{Cc}/u.test(qTrimmed)) return 400;       // trim 後内部に制御文字 → 400
+const qNorm = qTrimmed.normalize("NFKC").toLowerCase();
 ```
 
 #### 検索アルゴリズム
@@ -169,14 +192,13 @@ ORDER BY
     ELSE 2
   END,
   resolve_count DESC,
-  updated_at DESC
+  updated_at DESC,
+  id ASC
 ```
 
-#### フィルタ・バリデーション
+#### その他のフィルタ
 
 - `is_public = true`
-- `q` 空 / 64 字超 → `400`
-- 制御文字を含む → `400` (改行・タブ等は事前 trim)
 - `p < 0` または `p > 49` → `400`
 
 #### レスポンス
@@ -242,48 +264,77 @@ const response = {
 
 これによりクライアントは「listing API で得た playlistId」と「resolve API レスポンスの `id`」を比較し、不一致なら **playlist pool LRU 衝突または register() の race condition** を検知できる (`playlist` pool は永久化するので通常起きないが、クライアント側 defensive layer として安全)。
 
-### 4.7 既存 `GET /r/{poolId}/_validate` の新 pool ID 対応
+### 4.7 新規 `GET /r/{poolId}/_validate`
 
-新規 pool でも `/r/{poolId}/_validate` で `{ ok, pool, poolSize }` を返すよう拡張:
+⚠️ **訂正 (v3)**: 当初は「既存エンドポイント」と記載していたが、現行コード (`src/app/r/[poolId]/[playlistId]/route.ts`) には `_validate` 専用ロジックは存在しない。`/r/playlist/_validate` は `poolId !== "default"` チェックで先に 404 を返す上、仮にチェックを通っても path param `[playlistId] === "_validate"` として Hasura クエリへ流される。したがって `_validate` は**新規ルートとして追加**する必要がある。
+
+#### 実装方針
+
+専用ルート `src/app/r/[poolId]/_validate/route.ts` を新設:
+
+```ts
+// src/app/r/[poolId]/_validate/route.ts
+const VALIDATE_ALLOWED_POOLS = new Set(["default", "playlist", "default-thumb"]);
+const POOL_SIZE = 100_000;
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ poolId: string }> }
+) {
+  const { poolId } = await params;
+  if (!VALIDATE_ALLOWED_POOLS.has(poolId)) {
+    return NextResponse.json({ ok: false, error: "Unknown pool" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, pool: poolId, poolSize: POOL_SIZE });
+}
+```
+
+Next.js App Router のルート優先順位では、静的セグメント `[poolId]/_validate/` が動的セグメント `[poolId]/[playlistId]/` より優先されるため、`/r/default/_validate` は新ルートにヒットし、`/r/default/{playlistId}` は既存ルートに流れる。
+
+#### レスポンス例
 
 ```http
-GET /r/playlist/_validate          → { ok: true, pool: "playlist", poolSize: 100000 }
-GET /r/default-thumb/_validate     → { ok: true, pool: "default-thumb", poolSize: 100000 }
+GET /r/playlist/_validate          → 200 { ok: true, pool: "playlist", poolSize: 100000 }
+GET /r/default-thumb/_validate     → 200 { ok: true, pool: "default-thumb", poolSize: 100000 }
+GET /r/unknown/_validate           → 404 { ok: false, error: "Unknown pool" }
 ```
 
 クライアント側 Editor (`PoolGenerator`) はこれを叩いて Pool ID 検証する。
 
 ## 5. Pool 設計
 
-### 5.1 Pool ID とサイズ
+### 5.1 Pool ID とサイズ (LRU 無効化 + 削除禁止)
 
-| Pool ID | 用途 | サイズ | LRU 上書き |
-|---|---|---|---|
-| `default` | 既存。動画 URL の pool | 100,000 | **有効** (既存挙動) |
-| `playlist` | **新規**。playlist resolve URL の pool | 100,000 | **無効 (永久保持)** ⚠️ |
-| `default-thumb` | **新規**。サムネ画像 URL の pool | 100,000 | **有効** (動画 URL と同様) |
+| Pool ID | 用途 | サイズ | LRU 上書き | 削除許可 |
+|---|---|---|---|---|
+| `default` | 既存。動画 URL の pool | 100,000 | ✅ **有効** (既存挙動) | ✅ `releaseByUrls()` で削除可 |
+| `playlist` | **新規**。playlist resolve URL の pool | 100,000 | 🔴 **無効** ⚠️ | 🔴 **削除禁止** (永久保持) |
+| `default-thumb` | **新規**。サムネ画像 URL の pool | 100,000 | ✅ **有効** (動画 URL と同様) | ✅ 削除可 |
 
-#### `playlist` pool の永久化が必要な理由
+すべて既存の `pool_slots` / `pool_url_index` テーブルで一元管理。`pg_advisory_xact_lock(hashtext(poolId))` の機構もそのまま流用。
 
-クライアントは `_resolvePool[N]` (= ベイク済 `/vrcurl/playlist/N`) を**ワールドのアセットとして永続的に持つ**。つまり「ベイク時に N → playlistId X」だった対応がランタイムで「N → playlistId Y」に上書きされると:
+#### `playlist` pool の永久保持が必要な理由
 
-- 配布済ワールド全員に対して、X を選んだつもりが Y が解決される
-- 全 VRChat ワールドが影響範囲 (グローバルな副作用)
+クライアントは `_resolvePool[N]` (= ベイク済 `/vrcurl/playlist/N`) を**ワールドのアセットとして永続的に持つ**。つまり「ベイク時に N → playlistId X」だった対応がランタイムで「N → playlistId Y」に上書きされる、もしくは slot 自体が削除されると:
 
-これを防ぐため、**`playlist` pool では LRU 上書きを禁止**する。容量超過時は:
-1. `register()` がエラー応答 (HTTP 500、運用アラート対象)
-2. 運用側で pool サイズを増やすか、削除済みプレイリストの slot を回収するロジックを別途実装
+- 配布済ワールド全員に対して、X を選んだつもりが Y が解決される (上書き) / 404 になる (削除)
+- 削除後に同じ playlist が再登録されると別 index が割り当たり、過去のベイクと整合しない
+- 全 VRChat ワールドが影響範囲 (グローバルな副作用、永久に直らない)
 
-実装例:
+そのため `playlist` pool は **LRU 上書き禁止** + **slot 削除禁止** を両立させる必要がある (v3 改訂)。
+
+#### (a) LRU 上書き禁止 (`register()` の変更)
+
+容量超過時は LRU 上書きせずエラーを投げる:
 
 ```ts
-const PERMANENT_POOLS = new Set(["playlist"]);
+const NO_LRU_POOLS = new Set(["playlist"]);
 
 async function register(poolId: string, url: string): Promise<number> {
   // ...重複チェック...
   if (count >= POOL_SIZE) {
-    if (PERMANENT_POOLS.has(poolId)) {
-      throw new PoolExhaustedError(`Pool ${poolId} is full and LRU is disabled`);
+    if (NO_LRU_POOLS.has(poolId)) {
+      throw new Error(`Pool '${poolId}' is full (LRU disabled)`);
     }
     // 既存 LRU 上書きロジック
   }
@@ -291,10 +342,53 @@ async function register(poolId: string, url: string): Promise<number> {
 }
 ```
 
+API は `500 Internal Server Error` + 運用アラート (ログレベル `error`、§8 参照)。
+
+#### (b) slot 削除禁止 (削除パスの保護)
+
+`playlist` pool slot は **プレイリスト削除/非公開化/cleanup-orphans 実行時にも保持**する。LRU 無効化だけでは不足するため、以下の削除パスを **`PROTECTED_POOLS` で除外**する:
+
+| 呼び出し元 | 場所 (server 側) | 対応 |
+|---|---|---|
+| `releaseByUrls(urls)` | `src/lib/pool.ts` | **`pool_id = 'playlist'` を除外** (`PROTECTED_POOLS`) |
+| `cleanupOrphanedVideos` | `src/app/actions.ts` | `releaseByUrls` 経由で playlist URL は対象外 (関数仕様として保証) |
+| `deletePlaylist` | `src/app/actions.ts` | 現状 `pool_slots[playlist]` は触っていない (✅ 永久保持済) — 受け入れ基準で**明示的に「触らない」を保証** |
+| プレイリスト非公開化 (`is_public = false`) | `actions.ts` 各所 | 同上 |
+| `cleanup-orphans.ts` バッチ | `src/scripts/cleanup-orphans.ts` | `playlist` pool に拡張**しない**ことを明文化 |
+
+実装例 (`releaseByUrls` 改修):
+
+```ts
+const PROTECTED_POOLS = new Set(["playlist"]);
+
+export async function releaseByUrls(urls: string[]): Promise<void> {
+  if (urls.length === 0) return;
+  const db = getDb();
+  await db.begin(async (tx) => {
+    await tx`
+      DELETE FROM pool_slots
+      WHERE (pool_id, index) IN (
+        SELECT pool_id, index FROM pool_url_index
+        WHERE url = ANY(${urls})
+          AND pool_id NOT IN (${[...PROTECTED_POOLS]})
+      )
+    `;
+    await tx`
+      DELETE FROM pool_url_index
+      WHERE url = ANY(${urls})
+        AND pool_id NOT IN (${[...PROTECTED_POOLS]})
+    `;
+  });
+}
+```
+
+これにより `playlist` pool slot は将来どんな削除パスを通っても**残り続ける**ことが保証される。
+
 #### LRU 容量試算
 
-- プレイリスト総数 (公開) 想定: 〜数万。100k で当面十分
-- 動画サムネ: 動画数 × 解像度 = 同上
+- プレイリスト総数 (公開) 想定: 〜数千〜数万。LRU 無効でも 100k で当面十分
+- 動画サムネ: 動画数と同等。100k で OK
+- 容量超過時の運用フローは §13 を参照
 
 ### 5.2 LRU 衝突に対する client 側 defensive (strict mode)
 
@@ -356,13 +450,19 @@ if (responseId != playlistId)
 
 完全 invalidation は複雑なので、**v1 では TTL 60秒任せでよい**。
 
-## 8. メトリクス
+## 8. メトリクス / ロギング
 
-- `popular_request_count` / `recent_request_count` / `search_request_count`
-- `search_query_top_50` (上位 50 検索クエリ、qNorm 単位)
-- `vrcurl_redirect_404_count` per pool (新 pool 含む)
-- `popular_p99_latency_ms` 等
-- `playlist_pool_capacity_used_pct` (LRU 無効 pool の運用監視)
+**v1 ではログ出力のみ** (構造化ログ)。監視ダッシュボード化は別 issue で扱う。
+
+`console.log` / `console.warn` / `console.error` で以下を構造化出力:
+
+- `popular_request_count` / `recent_request_count` / `search_request_count` (per-request log)
+- `search_query` (per-request log、`q_norm` のみ。生 `q` は記録しない)
+- `vrcurl_redirect_404` per pool (404 発生時のみ)
+- **`playlist` pool 容量警告**: `register()` 時に `count >= 80,000` で `console.warn`、`count >= 95,000` で `console.error`
+- `popular_p99_latency_ms` 等のレイテンシは既存 `/r/...` メトリクス機構と同形式
+
+ダッシュボード化 (`pool_slots_count_by_pool` の Grafana 連携、`search_query_top_50` の集計等) は本仕様のスコープ外。**別 issue で扱う**。
 
 ## 9. テスト
 
@@ -370,21 +470,35 @@ if (responseId != playlistId)
 
 - `popular(p=0)` が pageSize 件返す
 - `recent(p=49)` が空でも 200 で `items: []` が返る
+- **`recent` で同 `created_at` の playlist 2 件のページング順序が `id ASC` で安定** (tie-breaker テスト)
 - `search(q="")` → 400
+- `search(q="   ")` (空白のみ) → 400 (trim 後空)
 - `search(q="aaa..." (65字))` → 400
 - `search(q="あいうえおかきくけこさしすせそたちつてとなにぬねの")` (50字) → 200
+- **`search(q="abc\ndef")` (内部に改行) → 400** (trim 後内部に制御文字)
 - **`search(q="カラオケ")` と `search(q="ｶﾗｵｹ")` が同じ結果セット** (NFKC 正規化テスト)
 - **`search(q="Karaoke")` と `search(q="karaoke")` が同じ結果** (lowercase テスト)
 - `/vrcurl/playlist/0` (空) → 404
 - `/vrcurl/default-thumb/0` (空) → 404
 - `/vrcurl/unknown-pool/0` → 404 (whitelist 動作)
+- `/r/default/_validate` → 200 `{ ok: true, pool: "default", poolSize: 100000 }`
+- `/r/playlist/_validate` → 200
+- `/r/unknown/_validate` → 404
+- `/r/default/{playlistId}` (resolve) は引き続き正常動作 (`_validate` ルート追加で壊れていないことの回帰テスト)
 - `popular` 同一クエリを 65 回連続叩いて 65 回目で 429
-- `playlist` pool 100,001 件目の register でエラー応答 (永久 pool 検証)
-- `display_name` が NULL のユーザーで `ownerName == misskey_username` を確認
+- `playlist` pool 100,001 件目の register でエラー応答 (LRU 無効化テスト)
+- **`releaseByUrls([playlistDestUrl])` が `pool_id='playlist'` の slot を削除しないこと** (削除禁止テスト)
+- `default` pool が 100,000 に達した状態で `register("default", ...)` 呼出 → LRU 上書き成功 (既存挙動の回帰テスト)
+- `users.display_name === null` のとき `ownerName === misskey_username`
+- **`users.display_name === ""` のとき `ownerName === misskey_username`** (空文字フォールバックテスト)
+- **`users.display_name === "  "` (空白のみ) のとき `ownerName === misskey_username`**
 
 ### 9.2 結合テスト
 
 - listing → クライアントが `resolveIndex` 経由で `/vrcurl/playlist/{i}` を叩く → 302 で `/r/default/{playlistId}` → 既存 resolve flow → レスポンスに `id` が含まれる
+- listing → `thumbIndex` 経由で `/vrcurl/default-thumb/{i}` を叩く → 302 で実サムネ URL
+- 同一 playlist を複数回 listing 取得 → `resolveIndex` が変わらないこと (永久保持の保証)
+- **プレイリスト削除後も `/vrcurl/playlist/{old_index}` が 302 を返し続けること** (削除禁止の保証)
 
 ## 10. ロールアウト
 
@@ -398,29 +512,37 @@ if (responseId != playlistId)
 
 ### 新規エンドポイント
 
-- [ ] `/api/vrc/playlists/popular?p={page}` 実装 (ページサイズ 20、最大 page 49、resolve_count DESC + updated_at DESC 順)
-- [ ] `/api/vrc/playlists/recent?p={page}` 実装 (created_at DESC 順)
-- [ ] `/api/vrc/playlists/search?q={query}&p={page}` 実装 (q 1〜64 字、NFKC + lower 正規化、3 段ソート)
+- [ ] `/api/vrc/playlists/popular?p={page}` 実装 (ページサイズ 20、最大 page 49、`resolve_count DESC` → `updated_at DESC` → **`id ASC`** 順)
+- [ ] `/api/vrc/playlists/recent?p={page}` 実装 (`created_at DESC` → **`id ASC`** 順)
+- [ ] `/api/vrc/playlists/search?q={query}&p={page}` 実装 (q trim 後 1〜64 字、内部に制御文字があれば 400、NFKC + lower 正規化、4 段ソート末尾に **`id ASC`**)
 
 ### 既存エンドポイントの拡張
 
 - [ ] `/vrcurl/{poolId}/{index}` の `ALLOWED_POOLS = {"default","playlist","default-thumb"}` ホワイトリスト化
+- [ ] `/r/{poolId}/{playlistId}` のホワイトリスト: `default` のみ許可を明示維持 (resolve は default pool のみ意味を持つ)
 - [ ] `/r/{poolId}/{playlistId}` レスポンスに `id` フィールド追加 (defensive 検証用、§4.6)
-- [ ] `/r/{poolId}/_validate` が新 pool ID 2 種に対応
+- [ ] **新規 `/r/{poolId}/_validate` ルート追加** (`src/app/r/[poolId]/_validate/route.ts`、§4.7)。許可 pool: `{"default","playlist","default-thumb"}`
 
 ### Pool 機構
 
 - [ ] `pool_slots` への `pool_id = playlist` / `default-thumb` 対応 (DB スキーマは現状で OK、書き込み開始のみ)
-- [ ] `playlist` pool の **LRU 無効化** (`PERMANENT_POOLS` set 導入、容量超過時はエラー)
-- [ ] `register()` のテストに永久 pool ケース追加
+- [ ] **`playlist` pool の LRU 無効化**: `register()` 内に `NO_LRU_POOLS = {"playlist"}` を追加、容量超過時はエラー
+- [ ] **`playlist` pool slot の削除禁止**: `releaseByUrls()` 内で `PROTECTED_POOLS = {"playlist"}` を除外
+- [ ] **`deletePlaylist` / 非公開化処理が `pool_slots[playlist]` を触らない** ことを明示的に検証 (現状の挙動を保証する回帰テスト)
+- [ ] **`cleanup-orphans.ts` スクリプトが `pool_slots[playlist]` を触らない** ことを明示的に検証
+- [ ] `register()` のテストに永久 pool ケース追加 (LRU 無効 + 削除禁止)
+- [ ] **`playlist` pool 件数のログ警告** (80% で `console.warn`、95% で `console.error`)。**ダッシュボード化は別 issue**
 
 ### 共通
 
 - [ ] レート制限 60 req/min/IP の適用 (新エンドポイント、`/vrcurl/default-thumb/...` は緩め可)
 - [ ] resolve cache 同様のインメモリキャッシュ TTL 60秒
 - [ ] エラーケース・バリデーション (q 長さ、p 範囲、不正 pool 等)
-- [ ] **`ownerName` フォールバック**: `display_name ?? misskey_username ?? ""`
-- [ ] **クエリ正規化**: NFKC + lowercase + trim を `q` の事前処理として実装、qHash も正規化後値で計算
+- [ ] **`ownerName` フォールバック**: `display_name?.trim() || misskey_username || ""` (空文字列もフォールバック対象)
+- [ ] **`totalEstimated`**: Hasura `_aggregate { count }` 経由 (admin secret) で取得 (Hasura permission 変更不要)
+- [ ] **`thumbIndex`**: 該当動画のサムネ URL がない場合 `-1` を返す
+- [ ] **絶対 URL は `process.env.NEXT_PUBLIC_SITE_URL` ベースで構築** (`dest_url` 等の hardcode 禁止、staging/dev/本番で同コード)
+- [ ] **クエリ正規化**: NFKC + lowercase を `q` の trim/長さ/制御文字バリデーション後に適用、qHash も正規化後値 (`q_norm`) で計算
 - [ ] §9 のテストケースを単体/結合テストとして追加
 - [ ] 結合確認: kawaplayer-playlistviewer のテストワールドから popular → resolve → サムネ表示のフローが通る
 
@@ -428,21 +550,24 @@ if (responseId != playlistId)
 
 実装する側で sub-issue / sub-PR に分割したい場合:
 
-1. 既存ルートのホワイトリスト拡張 + `/r/...` レスポンスに `id` 追加 + `/r/.../_validate` 拡張 — **基盤** (まず先に)
-2. `/api/vrc/playlists/popular` + `/recent` (ページング、resolveIndex 含む) — 主要機能
-3. `/api/vrc/playlists/search` (q + p、NFKC 正規化) — 検索ロジック
-4. Pool 機構の永久 pool 対応 (`PERMANENT_POOLS`)
-5. キャッシュ + レート制限 + メトリクス + ownerName フォールバック
+1. **基盤**: 既存 `/r` `/vrcurl` の poolId ホワイトリスト拡張 + **新規 `/r/{poolId}/_validate` ルート** + `register()` の `NO_LRU_POOLS` + `releaseByUrls()` の `PROTECTED_POOLS` + resolve API レスポンスへの `id` 追加
+2. **listing**: `/api/vrc/playlists/popular` + `/recent` (resolveIndex / thumbIndex / ownerName / totalEstimated / `id ASC` tie-breaker を含む)
+3. **search**: `/api/vrc/playlists/search` (NFKC + lower 正規化、4 段ソート、制御文字 400)
+4. **横断**: キャッシュ TTL / レート制限 / 構造化ログ (`playlist` pool 容量警告含む)
+
+`/thumb/...` は (1) で `/vrcurl/default-thumb/...` 流用に決定済 → 独立 PR 不要。
 
 ご相談ベースで、分割 PR にしてもまとめ PR にしても OK。
 
 ## 13. オープン課題 (Discussion)
 
-- 検索の N-gram / 全文インデックス対応 (`pg_trgm`) は v2 で？
+- 検索の `pg_trgm` / GIN インデックス導入条件 (本仕様では ILIKE Seq Scan を許容、公開プレイリスト数 〜10k 程度まで)
+  - 移行判断基準: search の p99 が 200ms を超えたら導入検討、もしくは公開プレイリスト数 5,000 件突破時
+- **`playlists.normalized_name` を generated column 化** して `lower(name)` の毎回計算を避ける (検索高速化、`pg_trgm` 導入と同時に検討)
 - listing にタグ/カテゴリでの絞り込みを追加するか？(現行 schema にタグカラムなし → 別 issue)
-- `playlists.normalized_name` (NFKC + lower 済み) を generated column / trigger 維持で導入するか? — 検索パフォーマンス向上見込み
 - thumb の WebP 配信 (CDN 経由) を入れるか？
-- `playlist` pool の容量超過運用 (アラート閾値、削除済 slot 回収バッチ等)
+- **`playlist` pool 容量超過時の運用フロー** (現行 100k で当面足りるが、超えた際の対応: pool サイズ拡大 / shard 化 / 別 pool への移行戦略)
+- メトリクスダッシュボード化 (`pool_slots_count_by_pool`、`search_query_top_50` 等の集計と Grafana 連携) は別 issue で
 
 ---
 
