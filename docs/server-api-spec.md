@@ -217,11 +217,12 @@ ORDER BY
 
 #### 修正
 
-ホワイトリスト定数化して 3 つの pool ID を許可:
+`/vrcurl` 専用のホワイトリスト定数として 3 つの pool ID を許可:
 
 ```ts
-const ALLOWED_POOLS = new Set(["default", "playlist", "default-thumb"]);
-if (!ALLOWED_POOLS.has(poolId)) {
+// src/app/vrcurl/[poolId]/[index]/route.ts
+const ALLOWED_VRCURL_POOLS = new Set(["default", "playlist", "default-thumb"]);
+if (!ALLOWED_VRCURL_POOLS.has(poolId)) {
   return new NextResponse(null, { status: 404 });
 }
 ```
@@ -231,9 +232,19 @@ if (!ALLOWED_POOLS.has(poolId)) {
 - `/vrcurl/playlist/{i}` — 新規、playlist resolve URL → 302 → `/r/default/{playlistId}`
 - `/vrcurl/default-thumb/{i}` — 新規、サムネ画像 URL (302 redirect)
 
-#### 同じ拡張を `/r/{poolId}/{playlistId}` にも
+#### `/r/{poolId}/{playlistId}` は `default` のみ維持 (共通化しない)
 
-`src/app/r/[poolId]/[playlistId]/route.ts:26` でも同じ `poolId` ホワイトリストチェックがあるが、resolve API は意味的には `default` のみで利用される (playlist や default-thumb の resolve は意味なし)。**現状維持で OK** だが、ALLOWED_POOLS を共通定数として lib に切り出して両方から参照する方が保守性が良い。
+⚠️ **重要**: `/vrcurl` のホワイトリストを `/r/{poolId}/{playlistId}` にも流用してはならない。resolve API は意味的に `default` pool のみで利用される (`playlist` / `default-thumb` の resolve は意味なし) ため、**専用の別ホワイトリスト**として `default` のみを許可する:
+
+```ts
+// src/app/r/[poolId]/[playlistId]/route.ts
+const ALLOWED_RESOLVE_POOLS = new Set(["default"]);
+if (!ALLOWED_RESOLVE_POOLS.has(poolId)) {
+  return new NextResponse(null, { status: 404 });
+}
+```
+
+定数を `/vrcurl` 側と共通化 (lib に切り出して両方から参照) すると、`/r/playlist/...` や `/r/default-thumb/...` を意図せず受理してしまい v3 contract に反するため、**別名・別 Set として明示的に分離**すること。
 
 ### 4.6 `GET /r/{poolId}/{playlistId}` レスポンスに `id` 追加 (defensive 検証用)
 
@@ -518,8 +529,8 @@ if (responseId != playlistId)
 
 ### 既存エンドポイントの拡張
 
-- [ ] `/vrcurl/{poolId}/{index}` の `ALLOWED_POOLS = {"default","playlist","default-thumb"}` ホワイトリスト化
-- [ ] `/r/{poolId}/{playlistId}` のホワイトリスト: `default` のみ許可を明示維持 (resolve は default pool のみ意味を持つ)
+- [ ] `/vrcurl/{poolId}/{index}` の `ALLOWED_VRCURL_POOLS = {"default","playlist","default-thumb"}` ホワイトリスト化
+- [ ] `/r/{poolId}/{playlistId}` の `ALLOWED_RESOLVE_POOLS = {"default"}` を**別名・別 Set として明示的に分離** (`/vrcurl` 側と共通化しない、resolve は default pool のみ意味を持つ)
 - [ ] `/r/{poolId}/{playlistId}` レスポンスに `id` フィールド追加 (defensive 検証用、§4.6)
 - [ ] **新規 `/r/{poolId}/_validate` ルート追加** (`src/app/r/[poolId]/_validate/route.ts`、§4.7)。許可 pool: `{"default","playlist","default-thumb"}`
 
