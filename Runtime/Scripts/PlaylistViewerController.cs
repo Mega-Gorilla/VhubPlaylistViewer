@@ -56,6 +56,42 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [Tooltip("CSV: lang,word,lang,word,... (\"en\" / \"ja\" など)")]
         [SerializeField] private string _trackCountUnits = "en,tracks,ja,曲";
 
+        // ----- Theme (#23 §0) -----
+        [Header("Theme (#23 §0)")]
+        [Tooltip("選択中タブ / アクションボタン色 (default: #4A90E2)")]
+        [SerializeField] private Color _primaryColor = new Color(0.29f, 0.56f, 0.89f, 1f);
+        [Tooltip("カード / 非選択タブの背景 tint (white α=0.08)")]
+        [SerializeField] private Color _surfaceColor = new Color(1f, 1f, 1f, 0.08f);
+        [Tooltip("ResultRow hover 時の背景 tint (white α=0.16)")]
+        [SerializeField] private Color _surfaceHoverColor = new Color(1f, 1f, 1f, 0.16f);
+        [Tooltip("Loading / Error overlay の背景色 (dark navy α=0.85)")]
+        [SerializeField] private Color _overlayColor = new Color(13f / 255f, 18f / 255f, 30f / 255f, 0.85f);
+        [Tooltip("主要 text 色 (white)")]
+        [SerializeField] private Color _textPrimaryColor = Color.white;
+        [Tooltip("補足 text 色 (white α=0.6)")]
+        [SerializeField] private Color _textMutedColor = new Color(1f, 1f, 1f, 0.6f);
+        [Tooltip("エラー表示色 (#E55353)")]
+        [SerializeField] private Color _errorColor = new Color(0.9f, 0.33f, 0.33f, 1f);
+
+        [Header("Theme apply targets")]
+        [Tooltip("Tab background Image。active 時に Primary、inactive 時に Surface へ tint")]
+        [SerializeField] private Image _tabPopularBg;
+        [SerializeField] private Image _tabRecentBg;
+        [SerializeField] private Image _tabSearchBg;
+        [Tooltip("Surface 色を当てる panel Image 群 (例: card 背景、UrlField 背景 など)")]
+        [SerializeField] private Image[] _surfacePanels;
+        [Tooltip("Overlay 色を当てる Image 群 (#LoadingOverlay / #ErrorOverlay の半透明背景)")]
+        [SerializeField] private Image[] _overlayPanels;
+        [Tooltip("Error icon (Phosphor warning) の Image。errorColor で tint")]
+        [SerializeField] private Image _errorIcon;
+
+        // 公開アクセサ (ResultRow 等が読む)
+        public Color PrimaryColor => _primaryColor;
+        public Color SurfaceColor => _surfaceColor;
+        public Color SurfaceHoverColor => _surfaceHoverColor;
+        public Color TextPrimaryColor => _textPrimaryColor;
+        public Color TextMutedColor => _textMutedColor;
+
         // ----- Hierarchy 自動バインド要素 (#-prefix) -----
         // SearchView (#ResultListContent / #ResultTemplate は廃止: ResultRow Pre-allocated 方式)
         private GameObject _searchView;
@@ -76,6 +112,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private int _state;
         private int _currentPage;
         private string _currentTab;       // "popular" / "recent" / "search"
+        private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search、UpdateTabVisuals が読む
         private string _currentPlaylistId;
         private string _pendingOwnerName; // SelectResult 時に listing item から carry over
         private string _trackCountUnit;
@@ -89,12 +126,48 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             BindHierarchy();
             UpdateLanguageStrings();
+            ApplyThemeOnStart();
             SetState(STATE_IDLE);
 
             if (_autoLoadPopularOnStart)
             {
                 SendCustomEventDelayedSeconds(nameof(_AutoLoadPopular), _autoLoadDelay);
             }
+        }
+
+        /// <summary>
+        /// Inspector で wire された各 Image / panel を、Theme color group の値で初期 tint する。
+        /// active tab の visual も併せて更新 (#23 Phase A)。
+        /// </summary>
+        private void ApplyThemeOnStart()
+        {
+            if (_surfacePanels != null)
+            {
+                for (int i = 0; i < _surfacePanels.Length; i++)
+                {
+                    if (_surfacePanels[i] != null) _surfacePanels[i].color = _surfaceColor;
+                }
+            }
+            if (_overlayPanels != null)
+            {
+                for (int i = 0; i < _overlayPanels.Length; i++)
+                {
+                    if (_overlayPanels[i] != null) _overlayPanels[i].color = _overlayColor;
+                }
+            }
+            if (_errorIcon != null) _errorIcon.color = _errorColor;
+            UpdateTabVisuals();
+        }
+
+        /// <summary>
+        /// _activeTabIndex に基づき 3 タブの背景色を Primary / Surface に振り分ける (#23 Phase A)。
+        /// _activeTabIndex == -1 (起動直後、まだどのタブも触っていない) の場合は全タブ Surface。
+        /// </summary>
+        private void UpdateTabVisuals()
+        {
+            if (_tabPopularBg != null) _tabPopularBg.color = (_activeTabIndex == 0) ? _primaryColor : _surfaceColor;
+            if (_tabRecentBg != null)  _tabRecentBg.color  = (_activeTabIndex == 1) ? _primaryColor : _surfaceColor;
+            if (_tabSearchBg != null)  _tabSearchBg.color  = (_activeTabIndex == 2) ? _primaryColor : _surfaceColor;
         }
 
         public void _AutoLoadPopular()
@@ -218,6 +291,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             if (_listingClient == null) { ReportError("ListingClient not assigned"); return; }
             _currentTab = "popular";
+            _activeTabIndex = 0;
+            UpdateTabVisuals();
             _currentPage = page;
             SetState(STATE_LOADING);
             _listingClient.LoadPopular(page);
@@ -227,6 +302,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             if (_listingClient == null) { ReportError("ListingClient not assigned"); return; }
             _currentTab = "recent";
+            _activeTabIndex = 1;
+            UpdateTabVisuals();
             _currentPage = page;
             SetState(STATE_LOADING);
             _listingClient.LoadRecent(page);
@@ -236,6 +313,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             if (_searchClient == null) { ReportError("SearchClient not assigned"); return; }
             _currentTab = "search";
+            _activeTabIndex = 2;
+            UpdateTabVisuals();
             _currentPage = 0;
             SetState(STATE_LOADING);
             _searchClient.SubmitSearch();
