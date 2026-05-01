@@ -560,9 +560,8 @@ Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
 │   │   └── #SearchInputField  (stretch、56px left padding for icon、16px right)
 │   ├── #TabRow                (anchoredPos y=312, size 720×56) — タブ row
 │   │   └── HorizontalLayoutGroup (childForceExpandWidth、spacing=8)
-│   │       ├── #TabPopular    (HLG が幅再計算、~232×56)
-│   │       ├── #TabRecent
-│   │       └── #TabSearch
+│   │       ├── #TabPopular    (HLG が幅再計算、~356×56 で 50% 配分)
+│   │       └── #TabRecent     (将来 News tab 追加時に 3 分割に戻る予定、vhub-playlist#97)
 │   └── Scroll View            (anchoredPos y=-114, size 720×780) — 結果カードリスト
 │       └── Viewport / Content / #ResultRow0..19
 ├── #DetailView                (stretch fills canvas)
@@ -589,18 +588,19 @@ Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
 - `#Header` を Canvas 直下にしたのは **ビュー横断で常時表示** (DetailView 表示時も title 維持)
 - `#SearchView/#DetailView` は **section grouping marker** で、SetActive(true/false) で切替対象 → 中身の組み換えは保ちつつ、controller の SetState ロジックは維持
 - `#SearchBar` `#TabRow` `#DetailHeader` は **明示的グルーピング container** で、見た目だけでなく hierarchy 上で関係性を表現 → prefab 化担当者・将来のデザイナーが構造を読みやすく
-- `#TabRow` は HorizontalLayoutGroup で **3 タブ等幅自動配置** (手動座標指定の y バラつき問題を排除)
+- `#TabRow` は HorizontalLayoutGroup で **タブ等幅自動配置** (手動座標指定の y バラつき問題を排除)
+- **検索の発火**: 旧 `#TabSearch` button は廃止し、`#SearchInputField` (VRCUrlInputField) の **`OnEndEdit` (Enter / VRChat キーボード閉じ)** で `Controller.RequestSearch` を発火。`Search` タブの「タブ?入力欄?」曖昧さを解消、空 slot は将来 News タブ ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) で埋める想定
 - `#DetailHeader` の section title (`プレイリスト詳細`) は **静的テキスト** で localization は別途検討 (V1 は日本語固定)
 
 #### 再構築用 scene 配線手順 (prefab 化 #12 で必要)
 
 testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/PlaylistViewer.prefab` を export する際の参考:
 
-1. **Tab Image** (`#TabPopular/Recent/Search`): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = None` (色は controller が制御)。HLG 内では sizeDelta 0、anchor (0,0)-(1,1)
+1. **Tab Image** (`#TabPopular/Recent`): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = None` (色は controller が制御)。HLG 内では sizeDelta 0、anchor (0,0)-(1,1)。Button.onClick → `Controller` UdonBehaviour `SendCustomEvent` mode=String、strArg=`OnTabPopular` / `OnTabRecent`
 2. **ResultRow `#SelectButton`** (20 行): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = ColorTint` (ResultRow.Start が Button.colors を上書き)
 3. **`#Header`** (Canvas 直下): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-8) size (-16, 88)、Image sprite=`UI_RoundedPanel` Sliced color=white surface tint。Title TMP child (text "VHub PlaylistViewer" font 48 white center)
-4. **`#SearchBar`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,380) size (720,64)、Image surface tint、`#SearchInputField` を再 parent + `#SearchIcon` (UI_IconSearch、left 16px、size 40×40) child 追加
-5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、3 タブを child に再 parent
+4. **`#SearchBar`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,380) size (720,64)、Image surface tint、`#SearchInputField` を再 parent + `#SearchIcon` (UI_IconSearch、left 16px、size 40×40) child 追加。`#SearchInputField` (VRCUrlInputField) の **`OnEndEdit` UnityEvent** に persistent listener を 1 件追加 (target=`Controller` の UdonBehaviour、method=`SendCustomEvent`、mode=String、strArg=`RequestSearch`)。Placeholder text を `プレイリストを検索 (Enter で確定)` に
+5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` の 2 タブを child に再 parent (HLG が 50% 等幅自動配分)。News API ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) デプロイ後に `#TabNews` を 3 つ目として追加予定 (33% 配分に戻る)
 6. **SearchView `Scroll View`** repos: anchoredPos (0,-114) size (720,780) で Header/SearchBar/TabRow の下に配置
 7. **`#DetailHeader`** (`#DetailView` の child): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-104) size (-16,64)、Image surface tint。`#BackButton` を child に再 parent (anchor (0,0.5)-(0,0.5) pivot (0,0.5) anchoredPos (8,0) size (56,48)、`#Icon` child UI_IconBack 28×28)。`#SectionTitle` TMP child ("プレイリスト詳細" font 36 white center)
 8. **DetailView meta row** shift: `#PlaylistName/OwnerName/TotalTracks` を `#DetailHeader` 分 (164px) 下にシフト (anchoredPos.y -= 164)
