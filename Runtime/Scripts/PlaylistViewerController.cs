@@ -106,6 +106,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private TextMeshProUGUI _detailOwnerName;
         private TextMeshProUGUI _detailTotalTracks;
         private TMP_InputField _detailUrlField;
+        private RawImage _detailPlaylistThumbnail; // Phase A-4: cover art (#PlaylistThumbnail)
         private Animator _animator;
 
         // ----- Runtime state -----
@@ -114,7 +115,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private string _currentTab;       // "popular" / "recent" / "search"
         private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search、UpdateTabVisuals が読む
         private string _currentPlaylistId;
-        private string _pendingOwnerName; // SelectResult 時に listing item から carry over
+        private string _pendingOwnerName;     // SelectResult 時に listing item から carry over
+        private int _pendingYtThumbIndex = -1; // 同上、Phase A-4 で DetailView の cover art に使用
         private string _trackCountUnit;
 
         // 検索結果のキャッシュ (DataDictionary 直保持)
@@ -172,6 +174,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         public void _AutoLoadPopular()
         {
+            // ユーザーがすでにタブをクリックしていたら auto-load を抑制 (race condition fix)。
+            // 旧: _autoLoadDelay (2s) 経過後に無条件で RequestPopular(0) を呼んでいたため、
+            //     ユーザーが auto-load 発火前に Recent をクリックすると、後から Popular に
+            //     上書きされて見えていた (#23 Phase A 実機テストでユーザー指摘)。
+            if (_activeTabIndex != -1) return;
             RequestPopular(0);
         }
 
@@ -206,6 +213,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                     // 注: detail view では #TotalTracks を使う。per-row 側の #TrackCount との衝突回避のため
                     case "#TotalTracks": _detailTotalTracks = t.GetComponent<TextMeshProUGUI>(); break;
                     case "#UrlField": _detailUrlField = t.GetComponent<TMP_InputField>(); break;
+                    case "#PlaylistThumbnail": _detailPlaylistThumbnail = t.GetComponent<RawImage>(); break;
                 }
             }
         }
@@ -465,6 +473,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_detailTotalTracks != null) _detailTotalTracks.text = (tracks != null ? tracks.Count.ToString() : "0") + " " + _trackCountUnit;
             if (_detailUrlField != null) _detailUrlField.text = _baseUrl + "/r/default/" + playlistId;
 
+            // Phase A-4: cover art (i.ytimg.com 経由)。-1 / 範囲外なら ThumbnailLoader 側で dummy fallback
+            if (_detailPlaylistThumbnail != null && _thumbnailLoader != null)
+            {
+                _thumbnailLoader.LoadYtThumbnail(_pendingYtThumbIndex, _detailPlaylistThumbnail);
+            }
+
             _currentPlaylistId = playlistId;
             RenderTrackList(tracks);
 
@@ -516,6 +530,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         /// <summary>
         /// ResultRow.OnSelect から呼ばれる。Pre-allocated 各行が自身の固定 _index を渡してくる。
+        ///
+        /// 重要: pending メタ (`_pendingOwnerName` / `_pendingYtThumbIndex`) の更新は
+        /// **resolver が request を accept した後 (`Resolve` が `true` を返した後)** にのみ行う。
+        /// busy 中の resolver に重ねて click しても、in-flight な playlist と pending メタが desync
+        /// しないようにするためのレビュー指摘 fix (PR #34)。validation も pending 上書きより前に
+        /// 行うことで、不正行を click しても以前の pending が維持される。
         /// </summary>
         public void OnSelectResultByIndex(int rowIndex)
         {
@@ -523,15 +543,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_currentItems[rowIndex].TokenType != TokenType.DataDictionary) return;
             DataDictionary item = _currentItems[rowIndex].DataDictionary;
 
+            // 1. Validate first — 失敗時は pending を触らない
             DataToken idToken;
             string playlistId = "";
             if (item.TryGetValue("id", out idToken) && idToken.TokenType == TokenType.String) playlistId = idToken.String;
-
-            // ownerName は detail API のレスポンスに含まれないので、ここで listing item から拾って保存
-            DataToken ownerToken;
-            _pendingOwnerName = "";
-            if (item.TryGetValue("ownerName", out ownerToken) && ownerToken.TokenType == TokenType.String) _pendingOwnerName = ownerToken.String;
-
             int resolveIndex = TryGetInt(item, "resolveIndex", -1);
             if (resolveIndex < 0 || playlistId.Length == 0)
             {
@@ -539,8 +554,20 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 return;
             }
 
+            // 2. ローカルに carry-over 候補値を集める (この時点では pending field を上書きしない)
+            string ownerName = "";
+            DataToken ownerToken;
+            if (item.TryGetValue("ownerName", out ownerToken) && ownerToken.TokenType == TokenType.String) ownerName = ownerToken.String;
+            int ytThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
+
+            // 3. resolver に request を投げ、accept されたら pending を atomically 更新
+            if (_resolver == null) { ReportError("PlaylistResolver not assigned"); return; }
+            if (!_resolver.Resolve(resolveIndex, playlistId)) return; // busy / 不正等で reject、pending は前のまま
+
+            // 4. 受理後に pending 更新 + state 遷移
+            _pendingOwnerName = ownerName;
+            _pendingYtThumbIndex = ytThumbIndex;
             SetState(STATE_LOADING);
-            if (_resolver != null) _resolver.Resolve(resolveIndex, playlistId);
         }
 
         private void RenderTrackList(DataList tracks)
