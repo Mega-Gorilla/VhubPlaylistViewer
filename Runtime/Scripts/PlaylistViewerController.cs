@@ -36,6 +36,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [Header("Behavior")]
         [SerializeField] private bool _autoLoadPopularOnStart = true;
         [SerializeField] private float _autoLoadDelay = 2f;
+        [Tooltip("Error overlay 表示後、この秒数経過で自動的に SearchView に復帰する")]
+        [SerializeField] private float _errorAutoDismissSeconds = 5f;
         [SerializeField] private int _pageSize = 20;
 
         [Header("Result rows (Pre-allocated, 20 行を prefab に物理配置して各行に ResultRow をアタッチ)")]
@@ -149,6 +151,23 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             {
                 _animator.SetBool("IsDetailView", newState == STATE_DETAIL_VIEW);
             }
+
+            // ERROR overlay は数秒後に自動で消す (UX 改善: ユーザー操作不要で recovery)。
+            // 重複 schedule は state チェックで no-op になるため安全。
+            if (newState == STATE_ERROR)
+            {
+                SendCustomEventDelayedSeconds(nameof(_AutoDismissError), _errorAutoDismissSeconds);
+            }
+        }
+
+        /// <summary>
+        /// SendCustomEventDelayedSeconds から呼ばれる。STATE_ERROR から自動で SearchView へ復帰する。
+        /// 既に他 state に遷移済なら no-op (新エラー発生時の重複呼出に安全)。
+        /// </summary>
+        public void _AutoDismissError()
+        {
+            if (_state != STATE_ERROR) return;
+            SetState(STATE_SEARCH_VIEW);
         }
 
         // ----- Public API: タブ / ページング操作 -----
