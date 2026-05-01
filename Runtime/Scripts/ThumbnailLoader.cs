@@ -8,13 +8,14 @@ using VRC.Udon.Common.Interfaces;
 namespace MegaGorilla.KawaPlayer.PlaylistViewer
 {
     /// <summary>
-    /// /vrcurl/default-thumb/{index} 経由でサムネ画像を取得する。
-    /// (server-api-spec.md v2 §4.4/§4.5: 旧 /thumb/... は廃案、既存 /vrcurl/{poolId}/{index}
-    ///  の poolId ホワイトリスト拡張で同等機構を再利用)
-    /// 同じ thumbIndex のリクエストはキャッシュ命中。
+    /// yt-thumb-direct pool (i.ytimg.com 直接 baked URL) からサムネ画像を取得する。
+    /// (server-api-spec.md v4 / vhub-playlist#92: 旧 /vrcurl/default-thumb/{i} → 302 → i.ytimg.com の
+    ///  redirect chain は VRCImageDownloader が follow せず NG。i.ytimg.com URL を Editor 時に直接 baked する。
+    ///  Ytimg は VRChat の trusted image host なので Allow Untrusted URLs OFF プレイヤーでも表示可能)
+    /// 同じ ytThumbIndex のリクエストはキャッシュ命中。
     ///
     /// 制約:
-    /// - VRCImageDownloader の同時 N 並列制限が VRChat 側にあるため、
+    /// - VRCImageDownloader の rate limit (5s/件、scene 全体共有) が VRChat 側にあるため、
     ///   現状は単純な FIFO キューで 1 件ずつ処理する v1 実装。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]

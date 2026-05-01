@@ -103,11 +103,17 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
         /// vhub-playlist#92 v4: /api/vrc/yt-thumb-direct-baking?cursor=N で
         /// 全 (index, url) を fetch し、URL は i.ytimg.com 直接 (trusted host)。
         /// 失敗時は null + message。成功時は VRCUrl[] (i.ytimg.com 直接 URL の baked array)。
+        ///
+        /// runtime は listing JSON の items[i].ytThumbIndex を _ytThumbPool[ytThumbIndex] への
+        /// 直接 index として使うので、server から返された index を **そのスロットに保存** する必要がある
+        /// (response の到着順ではない)。server pool が sparse、1 始まり、register 順 != index 順 等の
+        /// ケースで wrong thumb / gray fallback を防ぐためのキー実装。欠番は new VRCUrl("") で埋める。
         /// </summary>
         public static VRCUrl[] FetchYtThumbDirectPool(string baseUrl, out string message)
         {
             message = "";
-            var allUrls = new List<VRCUrl>();
+            var indexedUrls = new Dictionary<int, string>();
+            int maxIndex = -1;
             int cursor = 0;
             int safety = 100; // 最大 100 page = 100k 件、暴走防止
 
@@ -131,8 +137,28 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                         {
                             foreach (var item in items)
                             {
-                                var url = item["url"]?.ToString();
-                                if (!string.IsNullOrEmpty(url)) allUrls.Add(new VRCUrl(url));
+                                var indexToken = item["index"];
+                                var urlToken = item["url"];
+                                if (indexToken == null || urlToken == null) continue;
+
+                                int idx = indexToken.ToObject<int>();
+                                string url = urlToken.ToString();
+                                if (idx < 0)
+                                {
+                                    message = "Server returned negative index " + idx + " at cursor " + cursor;
+                                    return null;
+                                }
+                                if (string.IsNullOrEmpty(url)) continue;
+
+                                string existing;
+                                if (indexedUrls.TryGetValue(idx, out existing) && existing != url)
+                                {
+                                    message = "Duplicate index " + idx + " with conflicting URLs: '" +
+                                              existing + "' vs '" + url + "'";
+                                    return null;
+                                }
+                                indexedUrls[idx] = url;
+                                if (idx > maxIndex) maxIndex = idx;
                             }
                         }
                         var nextCursor = jObj["nextCursor"];
@@ -146,7 +172,15 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                     return null;
                 }
             }
-            return allUrls.ToArray();
+
+            // index 0..maxIndex の dense array を作る。欠番は new VRCUrl("") (runtime 側で empty 判定 → dummy)。
+            VRCUrl[] result = new VRCUrl[maxIndex + 1];
+            for (int i = 0; i <= maxIndex; i++)
+            {
+                string url;
+                result[i] = indexedUrls.TryGetValue(i, out url) ? new VRCUrl(url) : new VRCUrl("");
+            }
+            return result;
         }
 
         // ---------- リフレクション代入 ----------
