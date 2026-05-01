@@ -115,7 +115,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             var indexedUrls = new Dictionary<int, string>();
             int maxIndex = -1;
             int cursor = 0;
-            int safety = 100; // 最大 100 page = 100k 件、暴走防止
+            const int MAX_PAGES = 100; // 最大 100 page × pageSize 1000 = 100k 件、暴走防止
+            int safety = MAX_PAGES;
+            bool finishedNaturally = false;
 
             while (safety-- > 0)
             {
@@ -162,7 +164,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                             }
                         }
                         var nextCursor = jObj["nextCursor"];
-                        if (nextCursor == null || nextCursor.Type == Newtonsoft.Json.Linq.JTokenType.Null) break;
+                        if (nextCursor == null || nextCursor.Type == Newtonsoft.Json.Linq.JTokenType.Null)
+                        {
+                            finishedNaturally = true;
+                            break;
+                        }
                         cursor = nextCursor.ToObject<int>();
                     }
                 }
@@ -171,6 +177,16 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                     message = "Fetch failed at cursor " + cursor + ": " + ex.Message;
                     return null;
                 }
+            }
+
+            // safety 枯渇 + nextCursor 残 = partial pool。silent return ではなく fail closed。
+            // (server 側 ensure re-throw と整合する fail-closed pattern。本来発生し得ないが defense-in-depth)
+            if (!finishedNaturally)
+            {
+                message = "Safety limit reached (" + MAX_PAGES + " pages × pageSize=1000 = " +
+                          (MAX_PAGES * 1000) + " items) but server still returned nextCursor=" +
+                          cursor + ". Refusing to bake a partial pool.";
+                return null;
             }
 
             // index 0..maxIndex の dense array を作る。欠番は new VRCUrl("") (runtime 側で empty 判定 → dummy)。
