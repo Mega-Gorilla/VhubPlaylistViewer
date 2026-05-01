@@ -48,8 +48,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         /// <summary>
         /// Controller から呼ばれる。row が表示すべきデータをセットし、SetActive(true) で表示する。
+        /// ytThumbIndex は yt-thumb-direct pool (i.ytimg.com 直接 URL) の index (vhub-playlist#92 v4)。
         /// </summary>
-        public void SetData(string name, string owner, int trackCount, int thumbIndex)
+        public void SetData(string name, string owner, int trackCount, int ytThumbIndex)
         {
             if (_nameText != null) _nameText.text = TruncateString(name, _nameMaxChars);
             if (_ownerText != null) _ownerText.text = TruncateString(owner, _ownerMaxChars);
@@ -57,9 +58,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
             if (_thumbnailImage != null)
             {
-                if (thumbIndex >= 0 && _thumbnailLoader != null)
+                if (ytThumbIndex >= 0 && _thumbnailLoader != null)
                 {
-                    _thumbnailLoader.LoadThumbnail(thumbIndex, _thumbnailImage);
+                    _thumbnailLoader.LoadYtThumbnail(ytThumbIndex, _thumbnailImage);
                 }
                 else
                 {

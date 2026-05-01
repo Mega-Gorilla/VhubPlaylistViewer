@@ -426,10 +426,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 string name = TryGetString(item, "name", "");
                 string owner = TryGetString(item, "ownerName", "");
                 int trackCount = TryGetInt(item, "trackCount", 0);
-                int thumbIndex = TryGetInt(item, "thumbIndex", -1);
+                // ytThumbIndex は yt-thumb-direct pool (i.ytimg.com 直接 URL) の index (vhub-playlist#92 v4)。
+                // 旧 thumbIndex (default-thumb pool 経由) は redirect 不可で動かないため使わない。
+                int ytThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
 
                 row.SetTrackCountSuffix(" " + _trackCountUnit);
-                row.SetData(name, owner, trackCount, thumbIndex);
+                row.SetData(name, owner, trackCount, ytThumbIndex);
             }
         }
 
