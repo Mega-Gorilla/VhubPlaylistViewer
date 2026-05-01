@@ -87,36 +87,54 @@ prefab 内の子 GameObject 名で、用途を区別する:
 | `#OwnerName` (詳細ビュー) | `#Owner` (検索結果カード) |
 | `#TotalTracks` (詳細ビュー、playlist 総トラック数) | `#TrackCount` (検索結果カード、playlist の trackCount) |
 
-**主要な `#`-prefix 要素一覧** (実装の `Start()` で参照される):
+**主要な `#`-prefix 要素一覧** (実装の `Start()` でバインド or per-row 描画時に参照、Phase A-3 後の canonical 構造)。詳細な rect サイズ / anchor / pivot / 配線手順は §13.6 参照:
 
 ```
-PlaylistViewer (PlaylistViewerController)
-└── Canvas
+PlaylistViewer (Controller / ListingClient / SearchClient / PlaylistResolver / ThumbnailLoader)
+└── Canvas (WorldSpace + BoxCollider + VRCUiShape, §13.2)
+    ├── #Header                      (Canvas 直下、ビュー横断、§13.5/§13.6)
+    │   └── #Title                   (TMP_Text "VHub PlaylistViewer")
     ├── #SearchView
-    │   ├── #SearchInputField        (VRCUrlInputField, Inspector で text に API URL プレフィックスをプリセット)
-    │   ├── #TabPopular              (Button)
-    │   ├── #TabRecent               (Button)
-    │   ├── #TabSearch               (Button, クエリ送信)
-    │   ├── #ResultListContent       (ScrollRect Content, 親)
-    │   │   └── #ResultTemplate      (非アクティブのテンプレート row)
-    │   │       ├── #Thumbnail       (RawImage)
-    │   │       ├── #Name            (TMP_Text)
-    │   │       ├── #Owner           (TMP_Text)
-    │   │       ├── #TrackCount      (TMP_Text)
-    │   │       └── #SelectButton    (Button)
-    │   ├── #PrevPageBtn / #NextPageBtn / #PageLabel
-    │   ├── #LoadingOverlay
-    │   └── #ErrorOverlay
-    │       └── #ErrorMessage        (TMP_Text)
-    └── #DetailView
-        ├── #PlaylistName / #OwnerName / #TotalTracks
-        ├── #UrlField                (TMP_InputField, readOnly)
-        ├── #TrackListContent
-        │   └── #TrackTemplate
-        │       ├── #Position
-        │       └── #Title
-        └── #BackButton
+    │   ├── #SearchBar               (検索入力 row、§13.6)
+    │   │   ├── #SearchIcon          (Image, UI_IconSearch)
+    │   │   └── #SearchInputField    (VRCUrlInputField、OnEndEdit → SendCustomEvent("RequestSearch")、§4.2)
+    │   ├── #TabRow                  (HorizontalLayoutGroup)
+    │   │   ├── #TabPopular          (Button、Button.onClick → OnTabPopular)
+    │   │   └── #TabRecent           (Button、Button.onClick → OnTabRecent)
+    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、News tab (vhub-playlist#97) で将来追加予定
+    │   └── (ScrollRect: Viewport / Content) — Pre-allocated 20 行 (§5.3)
+    │       ├── #ResultRow0          (ResultRow UdonBehaviour、_index=0)
+    │       │   ├── #Thumbnail       (RawImage)
+    │       │   ├── #Name            (TMP_Text)
+    │       │   ├── #Owner           (TMP_Text)
+    │       │   ├── #TrackCount      (TMP_Text)
+    │       │   └── #SelectButton    (Button、行全 stretch、行クリックで OnSelect)
+    │       └── #ResultRow1..#ResultRow19 (同構造、_index=1..19)
+    ├── #DetailView
+    │   ├── #DetailHeader            (Phase A-3 で新設、§13.6)
+    │   │   ├── #BackButton          (Button、左寄せ、Button.onClick → OnBackToSearch)
+    │   │   │   └── #Icon            (Image, UI_IconBack)
+    │   │   └── #SectionTitle        (TMP_Text "プレイリスト詳細")
+    │   ├── #PlaylistName / #OwnerName / #TotalTracks
+    │   ├── (ScrollRect tracks)
+    │   │   └── #TrackListContent
+    │   │       └── #TrackTemplate   (非アクティブ default、§13.1.2)
+    │   │           ├── #Position
+    │   │           └── #Title
+    │   └── #UrlLabel / #UrlField    (TMP_InputField、readOnly、コピー専用)
+    ├── #LoadingOverlay              (Canvas 直下)
+    │   ├── #LoadingMessage          (TMP_Text)
+    │   └── #LoadingSpinner          (Image UI_LoadingSpinner + UISpinner UdonBehaviour、§13.6)
+    └── #ErrorOverlay                (Canvas 直下)
+        ├── #ErrorMessage            (TMP_Text)
+        └── #ErrorIcon               (Image UI_IconError, errorColor tint)
 ```
+
+**Pre-allocated `#ResultRow0..#ResultRow19`** は Pre-allocated 20 行方式 (§5.3) によるもので、動的 `Instantiate` は **行わない**。Controller は `RenderResultList` でこの固定 20 行に対して `SetData(name, owner, trackCount, ytThumbIndex)` を呼び、余剰行は `Hide()`。旧 `#ResultListContent` / `#ResultTemplate` clone 方式は廃止 (PR #28 / #33 で実装済)。
+
+**`#TrackTemplate`** (DetailView 内のトラック一覧) は **clone-template 方式を維持** (Click event を持たない単純表示のため)。default では `SetActive(false)` 必須 (§13.1.2)。
+
+**ページング UI** (旧 `#PrevPageBtn / #NextPageBtn / #PageLabel`) は v1 prefab には未実装 (Controller の `_pageLabel` field は null 許容で binding 任意)。必要になり次第追加。
 
 **v1 では検索入力に 3D キーパッドを使わない**: `Keypad3D` / `KeypadKey` は repo に同梱されているが汎用 TMP_InputField 用ユーティリティとしての位置付けで、v1 prefab には含めない。理由は §12 を参照。
 
@@ -618,7 +636,7 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
 9. **DetailView `Scroll View`** resize: anchoredPos (0,-26) sizeDelta (-40,-573) で `#DetailHeader` + meta row と `#UrlLabel/UrlField` の間に収める
 10. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
 11. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
-12. **Controller Inspector**: `_tabPopularBg/Recent/Search` (3 Image refs) + `_surfacePanels[]` (`#Header BG`, `#SearchBar BG`, `#DetailHeader BG`, `#SearchInputField` BG, `#UrlField` BG, `#BackButton` BG など) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)
+12. **Controller Inspector**: `_tabPopularBg` / `_tabRecentBg` (2 Image refs) + `_tabSearchBg` は **意図的に未割当 (null)** のまま (Phase A-3 で `#TabSearch` を削除済、News tab ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) デプロイ後に `#TabNews` を追加するか、フィールド自体の削除 PR を出すかは別 cycle 判断。`UpdateTabVisuals` は null 安全) + `_surfacePanels[]` (`#Header BG`, `#SearchBar BG`, `#DetailHeader BG`, `#SearchInputField` BG, `#UrlField` BG, `#BackButton` BG など) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)
 13. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button
 
 #### UdonSharp 1.x で UdonBehaviour を MCP/Editor から add する pattern
