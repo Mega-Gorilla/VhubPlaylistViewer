@@ -254,13 +254,19 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             VRCUrl[] recentUrls = BuildPool(baseUrl + "/api/vrc/playlists/recent?p={i}", opts.ListingPageCount);
             AssignPrivateField(listingClient, "_recentPagePool", recentUrls);
 
+            // 5. News URL: baseUrl/api/vrc/news?p=0 (vhub-playlist#97 / PR #99 v4 #3、V1 は p=0 のみ)
+            //    pool ではなく単一 VRCUrl (paging guard により p=1 以降は server が 400 を返す)
+            VRCUrl newsUrl = new VRCUrl(baseUrl + "/api/vrc/news?p=0");
+            AssignPrivateField(listingClient, "_newsUrl", newsUrl);
+
             AssetDatabase.SaveAssets();
 
             r.Ok = true;
             r.Message = "Generated: resolve=" + opts.ResolvePoolSize +
                 ", yt-thumb-direct=" + ytThumbUrls.Length + " (fetched from server)" +
                 ", popular pages=" + opts.ListingPageCount +
-                ", recent pages=" + opts.ListingPageCount;
+                ", recent pages=" + opts.ListingPageCount +
+                ", news=1 (single page, vhub-playlist#97)";
             return r;
         }
     }

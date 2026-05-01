@@ -77,7 +77,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [Tooltip("Tab background Image。active 時に Primary、inactive 時に Surface へ tint")]
         [SerializeField] private Image _tabPopularBg;
         [SerializeField] private Image _tabRecentBg;
+        [Tooltip("Phase A-3 で `#TabSearch` 削除済 (Search は input field の OnEndEdit で発火) のため未使用、互換のため残置")]
         [SerializeField] private Image _tabSearchBg;
+        [Tooltip("News tab background Image (vhub-playlist#97 / PR #99 デプロイ済)。activeTabIndex=3 で Primary tint")]
+        [SerializeField] private Image _tabNewsBg;
         [Tooltip("Surface 色を当てる panel Image 群 (例: card 背景、UrlField 背景 など)")]
         [SerializeField] private Image[] _surfacePanels;
         [Tooltip("Overlay 色を当てる Image 群 (#LoadingOverlay / #ErrorOverlay の半透明背景)")]
@@ -113,7 +116,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private int _state;
         private int _currentPage;
         private string _currentTab;       // "popular" / "recent" / "search"
-        private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search、UpdateTabVisuals が読む
+        private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search (legacy、tab UI 削除済) / 3=News、UpdateTabVisuals が読む
         private string _currentPlaylistId;
         private string _pendingOwnerName;     // SelectResult 時に listing item から carry over
         private int _pendingYtThumbIndex = -1; // 同上、Phase A-4 で DetailView の cover art に使用
@@ -170,6 +173,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_tabPopularBg != null) _tabPopularBg.color = (_activeTabIndex == 0) ? _primaryColor : _surfaceColor;
             if (_tabRecentBg != null)  _tabRecentBg.color  = (_activeTabIndex == 1) ? _primaryColor : _surfaceColor;
             if (_tabSearchBg != null)  _tabSearchBg.color  = (_activeTabIndex == 2) ? _primaryColor : _surfaceColor;
+            if (_tabNewsBg != null)    _tabNewsBg.color    = (_activeTabIndex == 3) ? _primaryColor : _surfaceColor;
         }
 
         public void _AutoLoadPopular()
@@ -275,6 +279,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         public void OnTabPopular() { RequestPopular(0); }
         public void OnTabRecent() { RequestRecent(0); }
+        public void OnTabNews() { RequestNews(); }
         public void OnTabSearch() { RequestSearch(); }
         public void OnNextPage()
         {
@@ -326,6 +331,21 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             _currentPage = 0;
             SetState(STATE_LOADING);
             _searchClient.SubmitSearch();
+        }
+
+        /// <summary>
+        /// News tab (#TabNews) クリックで発火。/api/vrc/news?p=0 を fetch (V1 single page、vhub-playlist#97)。
+        /// 結果は OnListingResultReceived 経由で同 RenderResultList に流れ、news mode で描画される。
+        /// </summary>
+        public void RequestNews()
+        {
+            if (_listingClient == null) { ReportError("ListingClient not assigned"); return; }
+            _currentTab = "news";
+            _activeTabIndex = 3;
+            UpdateTabVisuals();
+            _currentPage = 0;
+            SetState(STATE_LOADING);
+            _listingClient.LoadNews();
         }
 
         private void LoadPage(string tab, int page)
@@ -516,15 +536,29 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 }
                 DataDictionary item = _currentItems[i].DataDictionary;
 
-                string name = TryGetString(item, "name", "");
-                string owner = TryGetString(item, "ownerName", "");
-                int trackCount = TryGetInt(item, "trackCount", 0);
-                // ytThumbIndex は yt-thumb-direct pool (i.ytimg.com 直接 URL) の index (vhub-playlist#92 v4)。
-                // 旧 thumbIndex (default-thumb pool 経由) は redirect 不可で動かないため使わない。
-                int ytThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
+                if (_currentTab == "news")
+                {
+                    // News mode (vhub-playlist#97): items[] = {id, title, body, publishedAt, link?}
+                    // ResultRow を再利用: title→#Name、body→#Owner、publishedAt 先頭 10 文字 (YYYY-MM-DD) →#TrackCount
+                    string title = TryGetString(item, "title", "");
+                    string body = TryGetString(item, "body", "");
+                    string publishedAt = TryGetString(item, "publishedAt", "");
+                    string dateOnly = publishedAt.Length >= 10 ? publishedAt.Substring(0, 10) : publishedAt;
+                    row.SetTrackCountSuffix(""); // suffix 不要 (date 単独で表示)
+                    row.SetDataNews(title, body, dateOnly);
+                }
+                else
+                {
+                    string name = TryGetString(item, "name", "");
+                    string owner = TryGetString(item, "ownerName", "");
+                    int trackCount = TryGetInt(item, "trackCount", 0);
+                    // ytThumbIndex は yt-thumb-direct pool (i.ytimg.com 直接 URL) の index (vhub-playlist#92 v4)。
+                    // 旧 thumbIndex (default-thumb pool 経由) は redirect 不可で動かないため使わない。
+                    int ytThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
 
-                row.SetTrackCountSuffix(" " + _trackCountUnit);
-                row.SetData(name, owner, trackCount, ytThumbIndex);
+                    row.SetTrackCountSuffix(" " + _trackCountUnit);
+                    row.SetData(name, owner, trackCount, ytThumbIndex);
+                }
             }
         }
 
@@ -541,6 +575,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             if (_currentItems == null || rowIndex < 0 || rowIndex >= _currentItems.Count) return;
             if (_currentItems[rowIndex].TokenType != TokenType.DataDictionary) return;
+            // News tab はクリック不可 (read-only display、navigation 先なし、V1 仕様)
+            if (_currentTab == "news") return;
             DataDictionary item = _currentItems[rowIndex].DataDictionary;
 
             // 1. Validate first — 失敗時は pending を触らない

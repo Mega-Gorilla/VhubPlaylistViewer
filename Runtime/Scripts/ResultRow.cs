@@ -105,6 +105,22 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         }
 
         /// <summary>
+        /// News mode (vhub-playlist#97) 用 SetData。playlist の int trackCount + suffix の整形を
+        /// 通さず、`dateText` を `#TrackCount` slot にそのまま表示する。thumbnail は placeholder 固定。
+        /// title/body は通常通り `_nameMaxChars` / `_ownerMaxChars` で truncate。
+        /// </summary>
+        public void SetDataNews(string title, string body, string dateText)
+        {
+            if (_nameText != null) _nameText.text = TruncateString(title, _nameMaxChars);
+            if (_ownerText != null) _ownerText.text = TruncateString(body, _ownerMaxChars);
+            if (_trackCountText != null) _trackCountText.text = dateText;
+
+            if (_thumbnailImage != null) _thumbnailImage.texture = _placeholderThumbnail;
+
+            gameObject.SetActive(true);
+        }
+
+        /// <summary>
         /// VRChat の TMP で overflow=Ellipsis / Truncate が頂点ゼロ bug を起こすため、
         /// C# 側で text を最大文字数で切り捨てて末尾に「…」(U+2026) を付加する。
         /// 詳細: docs/unity-architecture.md §13.1
