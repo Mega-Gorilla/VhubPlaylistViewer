@@ -38,6 +38,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private Texture _placeholderThumbnail;
         [SerializeField] private string _trackCountSuffix = " tracks";
 
+        [Header("Text length limits (TMP overflow=Ellipsis/Truncate が VRChat で頂点ゼロ bug を起こすため C# 側で truncate)")]
+        [Tooltip("playlist 名の最大文字数。超過分は末尾を「…」で省略")]
+        [SerializeField] private int _nameMaxChars = 30;
+        [Tooltip("owner 名の最大文字数。超過分は末尾を「…」で省略")]
+        [SerializeField] private int _ownerMaxChars = 20;
+
         public int Index => _index;
 
         /// <summary>
@@ -45,8 +51,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         /// </summary>
         public void SetData(string name, string owner, int trackCount, int thumbIndex)
         {
-            if (_nameText != null) _nameText.text = name != null ? name : "";
-            if (_ownerText != null) _ownerText.text = owner != null ? owner : "";
+            if (_nameText != null) _nameText.text = TruncateString(name, _nameMaxChars);
+            if (_ownerText != null) _ownerText.text = TruncateString(owner, _ownerMaxChars);
             if (_trackCountText != null) _trackCountText.text = trackCount.ToString() + _trackCountSuffix;
 
             if (_thumbnailImage != null)
@@ -62,6 +68,18 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             }
 
             gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// VRChat の TMP で overflow=Ellipsis / Truncate が頂点ゼロ bug を起こすため、
+        /// C# 側で text を最大文字数で切り捨てて末尾に「…」(U+2026) を付加する。
+        /// 詳細: docs/unity-architecture.md §13.1
+        /// </summary>
+        private string TruncateString(string s, int maxChars)
+        {
+            if (s == null) return "";
+            if (maxChars <= 0 || s.Length <= maxChars) return s;
+            return s.Substring(0, maxChars) + "…";
         }
 
         /// <summary>

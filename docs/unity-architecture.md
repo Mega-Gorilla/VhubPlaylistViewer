@@ -387,6 +387,33 @@ KawaPlayer / VIB から学んだベストプラクティス:
 #### 実例
 本パッケージの testing-chamber では、当初 M PLUS Rounded 1c + Noto Sans を TMP_Settings global fallback に追加したが、実機で日本語表示できない症状が発生。**TMP_Settings global fallback を空にしただけで解決**した。詳細は本リポジトリ issue 履歴。
 
+#### 13.1.1 TMP `overflow=Ellipsis` / `Truncate` は頂点ゼロ bug、`Overflow` のみ動作
+
+TMP_Text の `enableWordWrapping=false` + `overflowMode=Ellipsis` (or `Truncate`) の組合せで、`textInfo.meshInfo[0].vertexCount = 0` となり **何も描画されない**現象を testing-chamber 実機で確認 (2026-05-01)。Unity Editor の Game/Scene ビューでも再現。
+
+確実に動作するのは:
+- `enableWordWrapping=true (Normal)` + `overflowMode=Overflow` (= TMP デフォルト)
+
+→ **すべての TMP_Text を `wrap=Normal + overflow=Overflow` で統一** + 長文は **C# 側で pre-truncate** (末尾「…」付加) する方針が安全:
+
+```csharp
+// ResultRow.cs / PlaylistViewerController.cs に実装済の helper
+private string TruncateString(string s, int maxChars)
+{
+    if (s == null) return "";
+    if (maxChars <= 0 || s.Length <= maxChars) return s;
+    return s.Substring(0, maxChars) + "…";
+}
+
+// 使用例 (ResultRow.SetData)
+if (_nameText != null) _nameText.text = TruncateString(name, _nameMaxChars);
+```
+
+#### 罠
+- TMP の Ellipsis モードは「自動 …省略」してくれるので一見便利だが、**VRChat 環境では vertex generation が失敗**して文字消失する
+- 各 TMP_Text を Ellipsis にしても Editor (Game ビュー) で見えない → font/material 問題に見えるが **真因は wrap/overflow 設定**
+- max chars (`_nameMaxChars` 等) は Inspector で調整可能、font size と RectTransform width に応じて適切な値を設定
+
 ### 13.2 World Space Canvas に必要な VR pointer 受信 component
 
 VR pointer (LeftHand/RightHand のレーザービーム) が UI と interact するには、**Canvas に以下の 4 component が必要**:

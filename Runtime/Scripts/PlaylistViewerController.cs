@@ -40,6 +40,14 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private float _errorAutoDismissSeconds = 5f;
         [SerializeField] private int _pageSize = 20;
 
+        [Header("Detail view text length limits (TMP overflow bug 回避、docs/unity-architecture.md §13.1 参照)")]
+        [Tooltip("詳細表示の playlist 名最大文字数。超過分は末尾を「…」で省略")]
+        [SerializeField] private int _detailNameMaxChars = 50;
+        [Tooltip("詳細表示の owner 名最大文字数。超過分は末尾を「…」で省略")]
+        [SerializeField] private int _detailOwnerMaxChars = 30;
+        [Tooltip("track 一覧の各 title 最大文字数。超過分は末尾を「…」で省略")]
+        [SerializeField] private int _trackTitleMaxChars = 50;
+
         [Header("Result rows (Pre-allocated, 20 行を prefab に物理配置して各行に ResultRow をアタッチ)")]
         [Tooltip("固定 20 行の ResultRow 参照。prefab で 0..19 の順に並べる")]
         [SerializeField] private ResultRow[] _resultRows = new ResultRow[0];
@@ -168,6 +176,18 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             if (_state != STATE_ERROR) return;
             SetState(STATE_SEARCH_VIEW);
+        }
+
+        /// <summary>
+        /// VRChat の TMP で overflow=Ellipsis / Truncate が頂点ゼロ bug を起こすため、
+        /// C# 側で text を最大文字数で切り捨てて末尾に「…」(U+2026) を付加する。
+        /// 詳細: docs/unity-architecture.md §13.1
+        /// </summary>
+        private string TruncateString(string s, int maxChars)
+        {
+            if (s == null) return "";
+            if (maxChars <= 0 || s.Length <= maxChars) return s;
+            return s.Substring(0, maxChars) + "…";
         }
 
         // ----- Public API: タブ / ページング操作 -----
@@ -361,8 +381,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             }
 
             // 詳細ビュー描画
-            if (_detailPlaylistName != null) _detailPlaylistName.text = name;
-            if (_detailOwnerName != null) _detailOwnerName.text = _pendingOwnerName != null ? _pendingOwnerName : "";
+            if (_detailPlaylistName != null) _detailPlaylistName.text = TruncateString(name, _detailNameMaxChars);
+            if (_detailOwnerName != null) _detailOwnerName.text = TruncateString(_pendingOwnerName, _detailOwnerMaxChars);
             if (_detailTotalTracks != null) _detailTotalTracks.text = (tracks != null ? tracks.Count.ToString() : "0") + " " + _trackCountUnit;
             if (_detailUrlField != null) _detailUrlField.text = _baseUrl + "/r/default/" + playlistId;
 
@@ -481,7 +501,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                         string title = "";
                         if (tr.TryGetValue("title", out titleToken) && titleToken.TokenType == TokenType.String) title = titleToken.String;
                         TextMeshProUGUI tmp = c.GetComponent<TextMeshProUGUI>();
-                        if (tmp != null) tmp.text = title;
+                        if (tmp != null) tmp.text = TruncateString(title, _trackTitleMaxChars);
                     }
                 }
             }
