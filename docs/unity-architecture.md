@@ -98,11 +98,11 @@ PlaylistViewer (Controller / ListingClient / SearchClient / PlaylistResolver / T
     │   ├── #SearchBar               (検索入力 row、§13.6)
     │   │   ├── #SearchIcon          (Image, UI_IconSearch)
     │   │   └── #SearchInputField    (VRCUrlInputField、OnEndEdit → SendCustomEvent("RequestSearch")、§4.2)
-    │   ├── #TabRow                  (HorizontalLayoutGroup、3 タブ等幅 ~33% 配分)
+    │   ├── #TabRow                  (HorizontalLayoutGroup、現在 2 タブ等幅 50% 配分)
     │   │   ├── #TabPopular          (Button、Button.onClick → OnTabPopular)
     │   │   ├── #TabRecent           (Button、Button.onClick → OnTabRecent)
-    │   │   └── #TabNews             (Button、Button.onClick → OnTabNews、vhub-playlist#97 V1 / 単一ページ)
-    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、空 slot に News tab を追加
+    │   │   └── #TabNews             (**SetActive(false)、polish PR で hide**、Button.onClick → OnTabNews、vhub-playlist#97 V1 単一ページ)
+    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、News tab は polish PR でユーザー要望により非表示化 (code は維持、SetActive(true) で再有効化可)
     │   └── (ScrollRect: Viewport / Content) — Pre-allocated 20 行 (§5.3)
     │       ├── #ResultRow0          (ResultRow UdonBehaviour、_index=0)
     │       │   ├── #Thumbnail       (RawImage)
@@ -631,7 +631,7 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
 2. **ResultRow `#SelectButton`** (20 行): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = ColorTint` (ResultRow.Start が Button.colors を上書き)
 3. **`#Header`** (Canvas 直下): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-8) size (-16, 88)、Image sprite=`UI_RoundedPanel` Sliced color=white surface tint。Title TMP child (text "VHub PlaylistViewer" font 48 white center)
 4. **`#SearchBar`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,380) size (720,64)、Image surface tint、`#SearchInputField` を再 parent + `#SearchIcon` (UI_IconSearch、left 16px、size 40×40) child 追加。`#SearchInputField` (VRCUrlInputField) の **`OnEndEdit` UnityEvent** に persistent listener を 1 件追加 (target=`Controller` の UdonBehaviour、method=`SendCustomEvent`、mode=String、strArg=`RequestSearch`)。Placeholder text を `プレイリストを検索 (Enter で確定)` に
-5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` / `#TabNews` の 3 タブを child に re-parent (HLG が 33% 等幅自動配分)。`#TabNews` の Button.onClick は `Controller.SendCustomEvent("OnTabNews")`、Image は `UI_RoundedPanel` Sliced (color=white、Button.transition=None で controller 制御)、Text は "News" (legacy Text、英語固定 V1)
+5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` / `#TabNews` の 3 タブを child に re-parent。**polish PR 以降 `#TabNews` は `SetActive(false)`** でユーザー要望により非表示化、HLG が active な 2 child (Popular/Recent) を 50% 等幅再分配。`#TabNews` の Button.onClick は `Controller.SendCustomEvent("OnTabNews")`、Image は `UI_RoundedPanel` Sliced (color=white、Button.transition=None で controller 制御)、Text は "News" (legacy Text、英語固定 V1)。再有効化は `#TabNews.SetActive(true)` のみで OK (`OnTabNews` / `RequestNews` / `LoadNews` / news-mode RenderResultList / `_tabNewsBg` field / `_newsUrl` field / news bake は維持)
 6. **SearchView `Scroll View`** repos: anchoredPos (0,-114) size (720,780) で Header/SearchBar/TabRow の下に配置
 7. **`#DetailHeader`** (`#DetailView` の child): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-104) size (-16,64)、Image surface tint。`#BackButton` を child に再 parent (anchor (0,0.5)-(0,0.5) pivot (0,0.5) anchoredPos (8,0) size (56,48)、`#Icon` child UI_IconBack 28×28)。`#SectionTitle` TMP child ("プレイリスト詳細" font 36 white center)
 8. **`#PlaylistThumbnail`** (Phase A-4 新設、`#DetailView` の child): RawImage、anchor (0,1)-(0,1) pivot (0,1) anchoredPos (32,-184) sizeDelta (200, 200) で cover row 左に配置。default texture: `UI_ThumbPlaceholder` (PR #32)。SiblingIndex は `#DetailHeader` の直後 (= Scroll View より早い render order) に置くことで Scroll View 内 track が thumbnail 上に render
@@ -639,12 +639,14 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
    - `#PlaylistName`: anchor (0,1)-(1,1) pivot (0,1) anchoredPos (256,-188) sizeDelta (-280, 70) — 200 thumb + 24 gap = 224 左 padding + 32 右 padding
    - `#OwnerName`: anchor (0,1)-(0.5,1) pivot (0,1) anchoredPos (256,-266) sizeDelta (0, 30)
    - `#TotalTracks`: anchor (0.5,1)-(1,1) pivot (1,1) anchoredPos (-32,-266) sizeDelta (0, 30)
-10. **DetailView `Scroll View`** resize: anchoredPos (0,-85.5) sizeDelta (-40,-677) (cover row 224px 分縮小、~347 高さ)。Scroll View の Image color を α=0 に (BG 透過、cards が canvas に直接描画される)
-11. **`#TrackTemplate` restyle (Phase A-4)**: 自身に Image component 追加 (sprite=`UI_RoundedPanel` Sliced color=(1,1,1,0.08) surface tint pre-bake、clone は色継承)。sizeDelta (-3, 60)、`SetActive(false)` 維持。`#Position` rect: anchor (0,0)-(0,1) pivot (0,0.5) anchoredPos (16,0) sizeDelta (40, 0) で左固定幅。`#Title` rect: anchor (0,0)-(1,1) pivot (0,0.5) anchoredPos (72,0) sizeDelta (-96,0) で stretch with paddings
+10. **DetailView `Scroll View`** resize: anchoredPos (0,-85.5) sizeDelta (-40,-677) (cover row 224px 分縮小、~347 高さ)。Image color は polish PR 以降 **surface tint α=0.08** とし、詳細は step 17 参照 (旧 PR #34 では α=0 透過だったが polish PR で revert)
+11. **`#TrackTemplate` restyle (Phase A-4 + polish)**: 自身に Image component 追加 (**sprite=null** = sharp corner flat rect、color=(1,1,1,0.08) surface tint pre-bake、clone は色継承)。`SetActive(false)` 維持。`HorizontalLayoutGroup` + `ContentSizeFitter` (vertical=PreferredSize) を attach し **可変 cell サイズ** (1 行 / 2 行 wrap で title 量に応じて自動 height、polish PR で導入)。`#Position` に `LayoutElement` (preferredWidth=40)、`#Title` に `LayoutElement` (flexibleWidth=1) + TMP `wrap=true overflow=Overflow`。`#TrackListContent` に `VerticalLayoutGroup` (spacing=4、childForceExpandWidth=true、childControlHeight=false) + `ContentSizeFitter` (vertical=PreferredSize) で track の縦間隔とコンテンツ height を自動管理 → `RenderTrackList` script は positioning/sizing 操作なし、clone + text 設定のみ
 12. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
 13. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
 14. **Controller Inspector**: `_tabPopularBg` / `_tabRecentBg` / `_tabNewsBg` (3 Image refs、News tab デプロイ済 vhub-playlist#97) + `_tabSearchBg` は **意図的に未割当 (null)** (Phase A-3 で `#TabSearch` 削除済、`UpdateTabVisuals` は null 安全。互換のため field は維持) + `_surfacePanels[]` (`#Header BG`, `#SearchBar BG`, `#DetailHeader BG`, `#SearchInputField` BG, `#UrlField` BG, `#BackButton` BG など) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)。**`_detailPlaylistThumbnail` は `BindHierarchy` 自動バインド** (Inspector 配線不要、`#PlaylistThumbnail` 名前一致で hit)
-15. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button
+15. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button。**`#SelectButton` の SiblingIndex は 0 (= 最背面 render)** に設定し、`#Thumbnail` (RawImage) と `#Name`/`#Owner`/`#TrackCount` (TMP) の `raycastTarget=false` を必須 (polish PR で導入。click は raycast top-down で `#SelectButton` に到達、Image の white α≈0.08 が thumbnail を覆う「白膜」現象を排除)
+16. **`#DetailView/#CoverBg`** (polish PR で新設): cover row 領域を覆う surface tint card BG。RawImage ではなく Image (sprite=`UI_RoundedPanel` Sliced color=white α=0.08)、anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-176) sizeDelta (-48, 232)、SiblingIndex は `#DetailHeader` の直後 (= `#PlaylistThumbnail` / meta より背面 render)。raycastTarget=false。`_surfacePanels[]` に追加して theme apply 経由で起動時 surface 色に塗られる
+17. **`#DetailView/Scroll View` Image.color**: PR #34 で α=0 透過化したが polish PR で **surface tint α=0.08 に revert**。`#TrackTemplate` の sprite=null 化と組み合わせて scroll area 全体を 1 つの "tracks list card" として visual 統一。`_surfacePanels[]` に追加
 
 #### UdonSharp 1.x で UdonBehaviour を MCP/Editor から add する pattern
 

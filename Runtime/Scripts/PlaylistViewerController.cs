@@ -45,8 +45,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private int _detailNameMaxChars = 15;
         [Tooltip("詳細表示の owner 名最大文字数。超過分は末尾を「…」で省略。rect 384 + fontSize 28 で全角 13.7")]
         [SerializeField] private int _detailOwnerMaxChars = 15;
-        [Tooltip("track 一覧の各 title 最大文字数。超過分は末尾を「…」で省略。rect 658 + fontSize 36 で全角 18 + margin")]
-        [SerializeField] private int _trackTitleMaxChars = 22;
+        [Tooltip("(deprecated、現在 #Title は完全表示) " +
+                 "polish PR でユーザー要望により `RenderTrackList` の TruncateByWeight 呼出を削除、" +
+                 "TMP に raw title を渡す方針に変更。VerticalLayoutGroup + ContentSizeFitter が長 title の" +
+                 "wrap + 可変 cell サイズを処理する。フィールドは互換のため残存。")]
+        [SerializeField] private int _trackTitleMaxChars = 0;
 
         [Header("Result rows (Pre-allocated, 20 行を prefab に物理配置して各行に ResultRow をアタッチ)")]
         [Tooltip("固定 20 行の ResultRow 参照。prefab で 0..19 の順に並べる")]
@@ -273,6 +276,31 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (s == null) return "";
             if (maxChars <= 0 || s.Length <= maxChars) return s;
             return s.Substring(0, maxChars) + "…";
+        }
+
+        /// <summary>
+        /// pixel 幅相当の **weight** で truncate する版 (半角 = 1、全角 / CJK = 2)。
+        /// `TruncateString` は char count なので、半角優位な English/混在 content では
+        /// rect 幅を使い切らずに早めに「…」化される。weight ベースで rect を最大限使う。
+        /// 半角判定: ASCII (U+0000..U+007F) または半角カナ (U+FF61..U+FF9F)。
+        /// (TMP の overflow=Ellipsis VRChat vertex zero bug 回避、§13.1.1)
+        /// </summary>
+        private string TruncateByWeight(string s, int maxWeight)
+        {
+            if (s == null) return "";
+            if (maxWeight <= 0) return s;
+            int weight = 0;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                int w = (c < 0x0080 || (c >= 0xFF61 && c <= 0xFF9F)) ? 1 : 2;
+                weight += w;
+                if (weight > maxWeight)
+                {
+                    return s.Substring(0, i) + "…";
+                }
+            }
+            return s;
         }
 
         // ----- Public API: タブ / ページング操作 -----
@@ -625,10 +653,13 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
             if (tracks == null || tracks.Count == 0) return;
 
-            RectTransform parent = (RectTransform)_trackListContent.transform;
-            RectTransform tmpl = (RectTransform)_trackTemplate.transform;
-            float h = tmpl.sizeDelta.y;
-            Vector2 origPos = tmpl.anchoredPosition;
+            // Track template は VerticalLayoutGroup + ContentSizeFitter + LayoutElement で
+            // **可変 cell サイズ** (1 行 / 2 行 wrap で title に応じて自動高さ調整) (#23 polish)。
+            // RenderTrackList は positioning / sizing には触れず、clone と text 設定のみ。
+            // VLG が #TrackListContent の child を縦に spacing 付きで stack、
+            // CSF が各 clone の rect を child の preferredHeight に合わせる。
+            // 旧 (Phase A-4): 固定 height 60 + manual `(h + spacing) * i` positioning。
+            Transform parent = _trackListContent.transform;
 
             for (int i = 0; i < tracks.Count; i++)
             {
@@ -636,9 +667,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 DataDictionary tr = tracks[i].DataDictionary;
 
                 GameObject row = Instantiate(_trackTemplate);
-                RectTransform rt = (RectTransform)row.transform;
-                rt.SetParent(parent, false);
-                rt.anchoredPosition = origPos - new Vector2(0, h * i);
+                row.transform.SetParent(parent, false);
                 row.SetActive(true);
 
                 Transform[] cs = row.GetComponentsInChildren<Transform>(true);
@@ -656,11 +685,13 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                         string title = "";
                         if (tr.TryGetValue("title", out titleToken) && titleToken.TokenType == TokenType.String) title = titleToken.String;
                         TextMeshProUGUI tmp = c.GetComponent<TextMeshProUGUI>();
-                        if (tmp != null) tmp.text = TruncateString(title, _trackTitleMaxChars);
+                        // C# 側 truncate を **廃止** (polish PR、ユーザー要望「...表示を廃止して #Title を端まで表示」)。
+                        // raw title を TMP に渡し、wrap=true + overflow=Overflow + VLG/CSF が wrap + 可変 cell 高さを処理する。
+                        if (tmp != null) tmp.text = title;
                     }
                 }
             }
-            parent.sizeDelta = new Vector2(parent.sizeDelta.x, h * tracks.Count);
+            // parent.sizeDelta は ContentSizeFitter on #TrackListContent が自動計算。manual 操作なし。
         }
 
         // ----- ヘルパー -----
