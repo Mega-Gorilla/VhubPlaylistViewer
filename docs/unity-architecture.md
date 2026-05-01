@@ -98,11 +98,11 @@ PlaylistViewer (Controller / ListingClient / SearchClient / PlaylistResolver / T
     │   ├── #SearchBar               (検索入力 row、§13.6)
     │   │   ├── #SearchIcon          (Image, UI_IconSearch)
     │   │   └── #SearchInputField    (VRCUrlInputField、OnEndEdit → SendCustomEvent("RequestSearch")、§4.2)
-    │   ├── #TabRow                  (HorizontalLayoutGroup、3 タブ等幅 ~33% 配分)
+    │   ├── #TabRow                  (HorizontalLayoutGroup、現在 2 タブ等幅 50% 配分)
     │   │   ├── #TabPopular          (Button、Button.onClick → OnTabPopular)
     │   │   ├── #TabRecent           (Button、Button.onClick → OnTabRecent)
-    │   │   └── #TabNews             (Button、Button.onClick → OnTabNews、vhub-playlist#97 V1 / 単一ページ)
-    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、空 slot に News tab を追加
+    │   │   └── #TabNews             (**SetActive(false)、polish PR で hide**、Button.onClick → OnTabNews、vhub-playlist#97 V1 単一ページ)
+    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、News tab は polish PR でユーザー要望により非表示化 (code は維持、SetActive(true) で再有効化可)
     │   └── (ScrollRect: Viewport / Content) — Pre-allocated 20 行 (§5.3)
     │       ├── #ResultRow0          (ResultRow UdonBehaviour、_index=0)
     │       │   ├── #Thumbnail       (RawImage)
@@ -631,7 +631,7 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
 2. **ResultRow `#SelectButton`** (20 行): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = ColorTint` (ResultRow.Start が Button.colors を上書き)
 3. **`#Header`** (Canvas 直下): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-8) size (-16, 88)、Image sprite=`UI_RoundedPanel` Sliced color=white surface tint。Title TMP child (text "VHub PlaylistViewer" font 48 white center)
 4. **`#SearchBar`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,380) size (720,64)、Image surface tint、`#SearchInputField` を再 parent + `#SearchIcon` (UI_IconSearch、left 16px、size 40×40) child 追加。`#SearchInputField` (VRCUrlInputField) の **`OnEndEdit` UnityEvent** に persistent listener を 1 件追加 (target=`Controller` の UdonBehaviour、method=`SendCustomEvent`、mode=String、strArg=`RequestSearch`)。Placeholder text を `プレイリストを検索 (Enter で確定)` に
-5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` / `#TabNews` の 3 タブを child に re-parent (HLG が 33% 等幅自動配分)。`#TabNews` の Button.onClick は `Controller.SendCustomEvent("OnTabNews")`、Image は `UI_RoundedPanel` Sliced (color=white、Button.transition=None で controller 制御)、Text は "News" (legacy Text、英語固定 V1)
+5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` / `#TabNews` の 3 タブを child に re-parent。**polish PR 以降 `#TabNews` は `SetActive(false)`** でユーザー要望により非表示化、HLG が active な 2 child (Popular/Recent) を 50% 等幅再分配。`#TabNews` の Button.onClick は `Controller.SendCustomEvent("OnTabNews")`、Image は `UI_RoundedPanel` Sliced (color=white、Button.transition=None で controller 制御)、Text は "News" (legacy Text、英語固定 V1)。再有効化は `#TabNews.SetActive(true)` のみで OK (`OnTabNews` / `RequestNews` / `LoadNews` / news-mode RenderResultList / `_tabNewsBg` field / `_newsUrl` field / news bake は維持)
 6. **SearchView `Scroll View`** repos: anchoredPos (0,-114) size (720,780) で Header/SearchBar/TabRow の下に配置
 7. **`#DetailHeader`** (`#DetailView` の child): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-104) size (-16,64)、Image surface tint。`#BackButton` を child に再 parent (anchor (0,0.5)-(0,0.5) pivot (0,0.5) anchoredPos (8,0) size (56,48)、`#Icon` child UI_IconBack 28×28)。`#SectionTitle` TMP child ("プレイリスト詳細" font 36 white center)
 8. **`#PlaylistThumbnail`** (Phase A-4 新設、`#DetailView` の child): RawImage、anchor (0,1)-(0,1) pivot (0,1) anchoredPos (32,-184) sizeDelta (200, 200) で cover row 左に配置。default texture: `UI_ThumbPlaceholder` (PR #32)。SiblingIndex は `#DetailHeader` の直後 (= Scroll View より早い render order) に置くことで Scroll View 内 track が thumbnail 上に render
