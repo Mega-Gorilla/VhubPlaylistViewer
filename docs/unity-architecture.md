@@ -363,7 +363,95 @@ KawaPlayer / VIB から学んだベストプラクティス:
    - `Keypad3D` / `KeypadKey` は将来の汎用 TMP_InputField ユーティリティとして repo に残すが (#9, A: 残す)、**v1 prefab には含めない**
 5. **VRCUrlInputField の prefix プリセット**: API URL のプレフィックスを Inspector で `_searchInputField.text` にプリセットしておく。VRChat キーボードでユーザーが prefix 部分を消すリスクは `SearchClient.SubmitSearch()` の prefix 検証 (line 50 付近) で弾く
 
-## 13. 参考実装
+## 13. VRChat 環境固有の注意点 / 公式仕様 (実装で踏みやすい罠)
+
+実機 VR テストで判明した、VRChat 公式 docs に記載されているが **見落としやすい仕様** をまとめる。Editor 上では正常に見えても **実機 build で症状が顕在化** するケースが多い。
+
+### 13.1 TextMeshPro: `TMP_Settings.fallbackFontAssets` は **空にする**
+
+#### 仕様 (公式)
+[creators.vrchat.com/worlds/components/textmeshpro/](https://creators.vrchat.com/worlds/components/textmeshpro/) より:
+
+> "go to 'Project Settings' > 'TextMeshPro settings' remove all 'Fallback Font Assets.' (...) missing Unicode characters will appear as boxes in the Unity editor, but **appear correctly after uploading your world to VRChat**."
+
+つまり **TMP_Settings.fallbackFontAssets を空にする** ことで VRChat の **内蔵 fallback fonts (日本語含む)** が build 時に自動 inject される。
+
+#### 罠
+逆に「日本語表示するため」と思って TMP_Settings.fallbackFontAssets に独自 SDF (例: M PLUS / Noto Sans CJK) を追加すると、**VRChat 内蔵 fallback が override されて無効化** される。結果、各 TMP_Text の font asset 自身でカバーできない glyph は □ で表示される。
+
+#### 推奨設定
+- `Project Settings > TextMeshPro Settings > Fallback Font Assets` リストは **空** に保つ
+- 各 TMP_Text の `font` は VRChat SDK 同梱の `LiberationSans SDF` (default) でも、独自 SDF (M PLUS 等) でもよい
+- Editor 上では未対応 glyph が □ になるが **実機では VRChat fallback で正しく表示される** (許容)
+
+#### 実例
+本パッケージの testing-chamber では、当初 M PLUS Rounded 1c + Noto Sans を TMP_Settings global fallback に追加したが、実機で日本語表示できない症状が発生。**TMP_Settings global fallback を空にしただけで解決**した。詳細は本リポジトリ issue 履歴。
+
+### 13.2 World Space Canvas に必要な VR pointer 受信 component
+
+VR pointer (LeftHand/RightHand のレーザービーム) が UI と interact するには、**Canvas に以下の 4 component が必要**:
+
+| Component | 役割 |
+|---|---|
+| `Canvas` (`renderMode = WorldSpace`) | World 内描画 |
+| `CanvasScaler` (`Constant Pixel Size`) | DPI 制御 |
+| `GraphicRaycaster` | UI 要素への raycast |
+| **`BoxCollider`** | **VR pointer の物理 raycast 受信** (size = Canvas RectTransform 全体、`isTrigger = true`) |
+| **`VRCUiShape`** (`VRC.SDK3.Components.VRCUiShape`) | **SDK3 の正式 component**。BoxCollider と組合せて VR pointer 互換 |
+
+加えて:
+- Canvas の `Layer` は **`Default` (0)** に設定 (`UI` レイヤー (5) は VRChat 内で別扱いされ反応しないケースあり)
+- Scene に **EventSystem** + `StandaloneInputModule` (or VRChat 推奨の input module) が存在
+- ScrollRect の Mask 用 `Image.raycastTarget = true` (false だとスクロール反応しない)
+
+#### 罠
+`GraphicRaycaster` だけ付けても VR pointer は反応しない。**`BoxCollider` + `VRCUiShape` の両方が必須**。Editor の Game ビューではマウス click で動くので bug に気付きにくい。
+
+### 13.3 VRCImageDownloader / VRCStringDownloader の制約
+
+[creators.vrchat.com/worlds/udon/image-loading/](https://creators.vrchat.com/worlds/udon/image-loading/) で公式明記:
+
+#### 13.3.1 Redirect 不可
+> "URL redirection is not allowed and will result in an error."
+
+**`VRCImageDownloader` は HTTP 302 redirect を一切 follow しない**。直接 image URL を baked する必要あり。`VRCStringDownloader` も同様の制約があると testing-chamber 実機で確認済 (resolve API の `/vrcurl/playlist/{i}` → 302 → `/r/default/{playlistId}` で error 発生)。
+
+#### 13.3.2 Rate limit
+> "One image can be downloaded every five seconds (...) this limit applies to your entire scene"
+
+**5 秒に 1 件、scene/instance 全体で共有**。20 件並列 = 100 秒。queue 最大 1000 件、超過分 drop、実行順ランダム。
+
+#### 13.3.3 Trusted Image Hosts (allowlist)
+ImageDownloader は 13 ドメインを **trusted host** として許可:
+
+```
+DisBridge, Dropbox, GitHub, ImageBam, ImgBB, imgbox, Imgur,
+Postimages, Reddit, Twitter, VRCDN, VRChat, Ytimg
+```
+
+非 trusted ドメイン (例: `playlist.vrc-hub.com`) は player 個人設定 **「Allow Untrusted URLs」 ON** が必要 = UX 劣化。`i.ytimg.com` (Ytimg) は trusted で OK。
+
+#### 罠
+- API のレスポンスから取得した URL string は **VRCUrl runtime 構築不可** で baked にできない
+- `playlist.vrc-hub.com` の image proxy 案は untrusted host 問題で UX 劣化
+- → 解決策は **Editor 時に baked URL[] に i.ytimg.com 等の trusted host URL を直接書き込む** 設計 (vhub-playlist#92 で server 側 yt-thumb-direct pool 提案中)
+
+### 13.4 Editor 表示と実機表示の挙動差 (要許容)
+
+VRChat 環境では **Editor で正しく見える ≠ 実機で正しく見える**、また逆も成立する場面が多い:
+
+| 現象 | Editor | 実機 |
+|---|---|---|
+| TMP の日本語 (TMP_Settings 空時) | □ で見える | ✅ VRChat fallback で正常表示 |
+| VRCImageDownloader 動作 | ❌ ClientSim では未動作 (既知制約) | ✅ 実機では動作 |
+| VRCStringDownloader 動作 | ❌ Edit モードでは未動作 | ✅ 実機 (Play / VR) で動作 |
+| VR pointer / レーザー操作 | マウス click で代替 | VR controller で実 raycast |
+
+→ **debug の主要手段は VR 実機 build & test**。MCP 経由 SerializedObject 値 dump + 実機ログ (`%LocalAppData%/Low/VRChat/VRChat/output_log_*.txt`) の併用が効率的。Editor 表示だけで判断しない。
+
+## 14. 参考実装
 
 - `Mega-Gorilla/KawaPlayer` (公開) `Modules/PlaylistLoader/` — `VRCStringDownloader` + `_redirectPool` ベイクの先行例
 - yoshio_will `VisitorsInformationBoard 1.07a` (`_references/`) — テンプレートクローン式リスト UI、`#`-prefix Hierarchy バインド、Animator ビュー切替
+- bironist `imagePad 1.04` ([booth](https://bironist.booth.pm/items/4573315)) — VRCImageDownloader の使い方リファレンス (動的 URL → preset baked URL の 2 経路、5s rate limit 自前 throttle)
+- TsubokuLab `VRChatEventCalenderPrefab v0.1.1` ([github](https://github.com/Narazaka/vrchat-event-calendar)) — 1 枚画像ポスター固定配置、Quest 対応 (Y 軸反転対策の material 別バージョン)
