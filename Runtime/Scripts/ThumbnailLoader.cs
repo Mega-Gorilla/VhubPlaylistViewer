@@ -20,8 +20,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class ThumbnailLoader : UdonSharpBehaviour
     {
-        [Header("Pre-baked URLs (PoolGenerator が代入する)")]
-        [SerializeField] private VRCUrl[] _thumbPool = new VRCUrl[0];
+        [Header("yt-thumb-direct pool (i.ytimg.com 直接 baked、vhub-playlist#92 v4)")]
+        [Tooltip("PoolGenerator が代入。VRCImageDownloader で trusted host (Ytimg) から redirect なしで取得")]
+        [SerializeField] private VRCUrl[] _ytThumbPool = new VRCUrl[0];
 
         [Header("Fallback")]
         [SerializeField] private Texture _dummyTexture;
@@ -30,7 +31,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [Tooltip("最近使ったテクスチャの保持数")]
         [SerializeField] private int _cacheCapacity = 256;
 
-        public VRCUrl[] ThumbPool => _thumbPool;
+        public VRCUrl[] YtThumbPool => _ytThumbPool;
 
         // ----- キャッシュ (parallel arrays) -----
         private int[] _cachedIndices;     // thumb pool index
@@ -65,22 +66,27 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_downloader != null) _downloader.Dispose();
         }
 
-        public void LoadThumbnail(int thumbIndex, RawImage target)
+        /// <summary>
+        /// yt-thumb-direct pool (i.ytimg.com 直接 URL) からサムネ取得。
+        /// VRCImageDownloader が trusted host (Ytimg) で redirect なし取得 → Allow Untrusted URLs 設定不要。
+        /// vhub-playlist#92 v4 仕様。
+        /// </summary>
+        public void LoadYtThumbnail(int ytThumbIndex, RawImage target)
         {
             if (target == null) return;
-            if (_thumbPool == null || _thumbPool.Length == 0)
+            if (_ytThumbPool == null || _ytThumbPool.Length == 0)
             {
                 ApplyDummy(target);
                 return;
             }
-            if (thumbIndex < 0 || thumbIndex >= _thumbPool.Length)
+            if (ytThumbIndex < 0 || ytThumbIndex >= _ytThumbPool.Length)
             {
                 ApplyDummy(target);
                 return;
             }
 
             // キャッシュヒット?
-            int cacheIdx = LookupCache(thumbIndex);
+            int cacheIdx = LookupCache(ytThumbIndex);
             if (cacheIdx >= 0)
             {
                 target.texture = _cachedTextures[cacheIdx];
@@ -88,16 +94,15 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             }
 
             // 進行中?
-            if (_loadingIndex == thumbIndex)
+            if (_loadingIndex == ytThumbIndex)
             {
-                // 同じ index なら既にロード中、ターゲットは後で結果を割り当て (ここでは上書きで良い)
                 _loadingTarget = target;
                 return;
             }
 
             // キューへ追加
             ApplyDummy(target);
-            EnqueueLoad(thumbIndex, target);
+            EnqueueLoad(ytThumbIndex, target);
             ProcessQueue();
         }
 
@@ -125,7 +130,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             }
             _queueLen--;
 
-            VRCUrl url = _thumbPool[idx];
+            VRCUrl url = _ytThumbPool[idx];
             if (!Utilities.IsValid(url) || url.Get().Length == 0)
             {
                 ApplyDummy(target);

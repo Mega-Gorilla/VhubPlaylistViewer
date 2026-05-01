@@ -16,9 +16,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
 
         private string _baseUrl = PoolGenerator.DEFAULT_BASE_URL;
         private string _resolvePoolId = PoolGenerator.POOL_ID_RESOLVE;
-        private string _thumbPoolId = PoolGenerator.POOL_ID_THUMB;
         private int _resolvePoolSize = 1024;
-        private int _thumbPoolSize = 1024;
         private int _listingPageCount = 50;
 
         private string _statusMessage = "";
@@ -77,18 +75,20 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             EditorGUILayout.LabelField("Server Settings", EditorStyles.boldLabel);
             _baseUrl = EditorGUILayout.TextField("Base URL", _baseUrl);
             _resolvePoolId = EditorGUILayout.TextField("Resolve Pool ID", _resolvePoolId);
-            _thumbPoolId = EditorGUILayout.TextField("Thumb Pool ID", _thumbPoolId);
 
             EditorGUILayout.Space(12);
             EditorGUILayout.LabelField("Pool Sizes", EditorStyles.boldLabel);
             _resolvePoolSize = EditorGUILayout.IntField("Resolve Pool Size", _resolvePoolSize);
-            _thumbPoolSize = EditorGUILayout.IntField("Thumb Pool Size", _thumbPoolSize);
             _listingPageCount = EditorGUILayout.IntField("Listing Pages (each)", _listingPageCount);
 
-            int totalEntries = _resolvePoolSize + _thumbPoolSize + (_listingPageCount * 2);
+            EditorGUILayout.HelpBox(
+                "yt-thumb-direct pool は server から /api/vrc/yt-thumb-direct-baking で全件 fetch するため、サイズ指定不要です (vhub-playlist#92 v4)。",
+                MessageType.Info);
+
+            int totalEntries = _resolvePoolSize + (_listingPageCount * 2);
             float estimatedMB = totalEntries * 54f / (1024f * 1024f);
-            EditorGUILayout.LabelField("Total VRCUrls", totalEntries.ToString());
-            EditorGUILayout.LabelField("Estimated Size", "~" + estimatedMB.ToString("F2") + " MB");
+            EditorGUILayout.LabelField("Total VRCUrls (excl. yt-thumb)", totalEntries.ToString());
+            EditorGUILayout.LabelField("Estimated Size (excl. yt-thumb)", "~" + estimatedMB.ToString("F2") + " MB");
 
             EditorGUILayout.Space(12);
             EditorGUILayout.BeginHorizontal();
@@ -134,19 +134,13 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                 _statusType = MessageType.Error;
                 return;
             }
-            if (!PoolGenerator.ValidatePoolId(_baseUrl, _thumbPoolId, out msg))
-            {
-                _statusMessage = "Thumb pool: " + msg;
-                _statusType = MessageType.Error;
-                return;
-            }
-            _statusMessage = "Both pool IDs validated successfully";
+            _statusMessage = "Resolve pool ID validated successfully";
             _statusType = MessageType.Info;
         }
 
         private void Generate()
         {
-            if (_resolvePoolSize <= 0 || _thumbPoolSize <= 0 || _listingPageCount <= 0)
+            if (_resolvePoolSize <= 0 || _listingPageCount <= 0)
             {
                 _statusMessage = "Pool sizes must be positive";
                 _statusType = MessageType.Error;
@@ -154,7 +148,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             }
             bool proceed = EditorUtility.DisplayDialog(
                 "Generate Pools",
-                "既存の VRCUrl[] を上書きして生成します。続行しますか？",
+                "既存の VRCUrl[] を上書きして生成します。続行しますか？\n(yt-thumb-direct pool は server から fetch)",
                 "Generate", "Cancel");
             if (!proceed) return;
 
@@ -162,9 +156,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             {
                 BaseUrl = _baseUrl,
                 ResolvePoolId = _resolvePoolId,
-                ThumbPoolId = _thumbPoolId,
                 ResolvePoolSize = _resolvePoolSize,
-                ThumbPoolSize = _thumbPoolSize,
                 ListingPageCount = _listingPageCount
             };
 
