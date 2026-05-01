@@ -129,7 +129,7 @@ stateDiagram-v2
     [*] --> Idle
     Idle --> LoadingPopular: ワールド入室時 / TabPopular クリック
     Idle --> LoadingRecent: TabRecent クリック
-    Idle --> LoadingSearch: TabSearch クリック (検索実行)
+    Idle --> LoadingSearch: SearchInputField OnEndEdit (Enter / VRChat キーボード閉じ)
     Idle --> LoadingResolve: 結果カードの SelectButton クリック
 
     LoadingPopular --> SearchView: OnStringLoadSuccess
@@ -162,10 +162,11 @@ stateDiagram-v2
     → listingClient.LoadPopular(0)
       → _popularPagePool[0] (baked VRCUrl) を VRCStringDownloader.LoadUrl
         → OnStringLoadSuccess(json)
-          → controller.OnListingResultReceived(json, "popular")
+          → controller.OnListingResultReceived(json)
             → 内部で JSON パース (DataDictionary)
-            → #ResultTemplate をクローンして N 行描画
-            → 各行に対し thumbnailLoader.LoadThumbnail(thumbIndex, rawImage)
+            → 事前配置された #ResultRow0..19 (固定 20 行) に SetData (§5.3)
+            → SetData 内で各 ytThumbIndex に対し
+              thumbnailLoader.LoadYtThumbnail(ytThumbIndex, rawImage)
 ```
 
 ### 4.2 search (検索)
@@ -174,47 +175,53 @@ stateDiagram-v2
 [ユーザーが #SearchInputField (VRCUrlInputField) をタップ]
   → VRChat 内蔵キーボードが起動 (Copy/Paste も可)
   → ユーザーがキーボードでクエリ部分を編集
-  → OK で確定すると _searchInputField.text に反映される
+  → OK で確定すると _searchInputField.text に反映され、OnEndEdit 発火
 
-[Tab Search Click]
-  → controller.RequestSearch()
-    → searchClient.SubmitSearch()
-      → VRCUrl url = _searchInputField.GetUrl()  (VRChat の検証経由で VRCUrl 生成)
-      → VRCStringDownloader.LoadUrl(url, this)
-        → OnStringLoadSuccess(json)
-          → controller.OnListingResultReceived(json, "search")
+[OnEndEdit (Enter / VRChat キーボード閉じ) — UnityEvent persistent listener]
+  → Controller UdonBehaviour.SendCustomEvent("RequestSearch")
+    → controller.RequestSearch()
+      → searchClient.SubmitSearch()
+        → VRCUrl url = _searchInputField.GetUrl()  (VRChat の検証経由で VRCUrl 生成)
+        → VRCStringDownloader.LoadUrl(url, this)
+          → OnStringLoadSuccess(json)
+            → controller.OnListingResultReceived(json)
 ```
+
+(Phase A-3 で Search タブを廃止し、上記 Enter-to-search 方式に統一。詳細は §13.6)
 
 注: 当初は 3D キーパッドからの直接入力を検討していたが、Unity 実機検証で **`VRCUrlInputField.text` setter が Udon 非公開** であることが判明。3D キーパッドからの書き込み経路は塞がれているため、v1 は VRChat 内蔵キーボード方式に統一する。詳細は §6 を参照。
 
 ### 4.3 detail 表示 (resolve)
 
 ```
-[ResultCard SelectButton Click]
-  → controller.OnSelectResult(rowIndex)
-    → resolver.Resolve(playlistId, resolveIndex)
+[ResultRow SelectButton Click]
+  → ResultRow.OnSelect → controller.OnSelectResultByIndex(rowIndex)
+    → resolver.Resolve(resolveIndex, playlistId)
       → _resolvePool[resolveIndex] (baked VRCUrl, /vrcurl/playlist/{i}) を LoadUrl
-        → サーバーが 302 で /r/default/{playlistId} に redirect
-        → サーバーがその resolve API レスポンス (JSON) を返す
+        → サーバーが 200 + JSON を**直接**返す
+          (vhub-playlist#91 v4 デプロイ済。旧 302 → /r/default/{playlistId} 方式は
+           VRCStringDownloader が redirect follow しないため廃止)
       → OnStringLoadSuccess(json)
-        → controller.OnPlaylistResolved(json)
-          → トラック一覧描画
+        → controller.OnPlaylistResolved(json, playlistId)
+          → トラック一覧描画 (#TrackTemplate clone)
           → #UrlField.text = "https://playlist.vrc-hub.com/r/default/{playlistId}"
-          → Animator.SetBool("IsDetailView", true)
+            (KawaPlayer 等への貼付用 URL、表示専用、内部 fetch はしない)
+          → SetState(STATE_DETAIL_VIEW) → SetActive で SearchView ↔ DetailView 切替
+            (Animator は optional、α fade 等の演出担当 #13)
 ```
 
 ## 5. VRCUrl ベイク戦略
 
-### 5.1 4 種類の Pool
+### 5.1 Pool の種類 (v4 / Phase A 時点)
 
-| フィールド | 内容 | サイズ目安 |
+| フィールド | 内容 | 生成方法 / サイズ |
 |---|---|---|
-| `_resolvePool: VRCUrl[]` | `https://playlist.vrc-hub.com/vrcurl/playlist/{0..N-1}` | 1024 (= 同時表示できる playlist 上限) |
-| `_thumbPool: VRCUrl[]` | `https://playlist.vrc-hub.com/vrcurl/default-thumb/{0..M-1}` (server-api-spec v2: 旧 `/thumb/...` 廃案、既存 `/vrcurl/...` 流用) | 1024 |
-| `_popularPagePool: VRCUrl[]` | `https://playlist.vrc-hub.com/api/vrc/playlists/popular?p={0..P-1}` | 50 (= 1000 件まで閲覧可) |
-| `_recentPagePool: VRCUrl[]` | `https://playlist.vrc-hub.com/api/vrc/playlists/recent?p={0..P-1}` | 50 |
+| `_resolvePool: VRCUrl[]` (PlaylistResolver) | `https://playlist.vrc-hub.com/vrcurl/playlist/{0..N-1}` | template 展開 (`{i}`)、サイズ Inspector 入力 (default 1024) |
+| `_ytThumbPool: VRCUrl[]` (ThumbnailLoader) | `https://i.ytimg.com/vi/{videoId}/mqdefault.jpg` (vhub-playlist#92 v4)、**i.ytimg.com 直接 baked** で trusted host から redirect なし取得 | server `/api/vrc/yt-thumb-direct-baking?cursor=N` から **dynamic fetch**、index 保持 dense array (欠番は empty `VRCUrl`)。サイズ入力なし |
+| `_popularPagePool: VRCUrl[]` (ListingClient) | `https://playlist.vrc-hub.com/api/vrc/playlists/popular?p={0..P-1}` | template 展開、サイズ Inspector 入力 (default 50 = 1000 件まで) |
+| `_recentPagePool: VRCUrl[]` (ListingClient) | `https://playlist.vrc-hub.com/api/vrc/playlists/recent?p={0..P-1}` | 同上 (default 50) |
 
-合計 ≈ 2150 個の `VRCUrl`。アセットサイズへの影響は数十 KB 程度で許容範囲。
+旧 `_thumbPool` (`/vrcurl/default-thumb/{i}` → 302 → `i.ytimg.com`) は **廃止** (PR #29 で削除済)。VRCImageDownloader が redirect を follow しないため、また `playlist.vrc-hub.com` が untrusted host で「Allow Untrusted URLs OFF プレイヤー」で表示できなかった (vhub-playlist#92 経緯)。
 
 ### 5.2 ベイク手順
 
@@ -222,9 +229,12 @@ stateDiagram-v2
 
 1. ユーザーが **Tools > VHub PlaylistViewer > Generate Pools** を開く
 2. シーン中の `PlaylistViewerController` を選択
-3. Base URL / Pool ID / 各 pool サイズを設定
-4. **Validate** ボタンで `/r/{poolId}/_validate` を叩いて疎通確認
-5. **Generate** ボタンで `SerializedObject` 経由で 4 種 `VRCUrl[]` フィールドに代入
+3. Base URL / Resolve Pool ID / Resolve Pool Size / Listing Pages を設定 (yt-thumb-direct はサーバー fetch のためサイズ入力なし、HelpBox で明示)
+4. **Validate** ボタンで `/r/{resolvePoolId}/_validate` を叩いて疎通確認
+5. **Generate** ボタンで:
+   - resolve / popular / recent pool は template 展開で生成 → reflection で代入
+   - **yt-thumb-direct pool は `/api/vrc/yt-thumb-direct-baking` を paged fetch** (cursor + nextCursor、`pageSize=1000`、最大 100 page = 100k 件 safety) → server 返却 `index` を保持して dense `VRCUrl[]` 生成 → reflection で `ThumbnailLoader._ytThumbPool` に代入
+   - 失敗時 (負 index / 重複異 URL / safety 枯渇 + nextCursor 残) は **fail closed** で `null` 返却 + error message
 6. `EditorUtility.SetDirty()` + `AssetDatabase.SaveAssets()` で永続化
 
 KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲する。
@@ -245,20 +255,21 @@ KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲す
 
 **トラック一覧 (`#TrackTemplate`) は Click イベントを持たない**ため Instantiate clone を継続する。問題が起きるのは「動的生成した Button から親へ row index を渡す」場面のみで、トラック行はその制約に該当しない。
 
-これに伴い `PlaylistViewerController` の `RenderResultList` ロジックは prefab 完成 (#12) 時にこの方式に書き換える。`OnSelectResultByName(string)` は廃止予定。
+`PlaylistViewerController.RenderResultList` は既にこの Pre-allocated 20 行方式で実装済 (`Runtime/Scripts/PlaylistViewerController.cs` L401-436)。`OnSelectResultByName(string)` 系の旧 API は存在しない。
 
 ## 6. 各 Runtime UdonBehaviour の責任
 
 | クラス | 責任 | 主な依存 |
 |---|---|---|
-| `PlaylistViewerController` | 状態機械、UI バインド、子コンポーネント協調、Animator 制御 | UnityEngine.UI, TMPro, VRC.SDK3.Data |
+| `PlaylistViewerController` | 状態機械、UI バインド、子コンポーネント協調、テーマカラー source-of-truth (§13.5)、active tab tracking、SetActive ベース view 切替 (Animator は #13 で optional 演出担当) | UnityEngine.UI, TMPro, VRC.SDK3.Data |
 | `ListingClient` | popular / recent ページの GET、JSON パース | VRC.SDK3.StringLoading |
 | `SearchClient` | 検索 URL の動的取得 (VRCUrlInputField) と GET | VRC.SDK3.StringLoading |
-| `PlaylistResolver` | /r/... の GET、トラック一覧パース | VRC.SDK3.StringLoading |
-| `ThumbnailLoader` | サムネ画像の GET、Texture2D プール管理 | VRC.SDK3.Image |
-| `Keypad3D` | 3D キーパッドの親、文字 append/backspace/submit | UnityEngine.UI |
+| `PlaylistResolver` | /vrcurl/playlist/{i} の GET (vhub-playlist#91 v4: 200 JSON 直接)、トラック一覧パース | VRC.SDK3.StringLoading |
+| `ThumbnailLoader` | yt-thumb-direct pool (i.ytimg.com 直接 baked、vhub-playlist#92 v4) からサムネ取得、FIFO キュー + LRU キャッシュ | VRC.SDK3.Image |
+| `UISpinner` | Z 軸回転だけの極小コンポーネント、Loading overlay spinner 用 (§13.6) | UnityEngine |
+| `Keypad3D` | 3D キーパッドの親、文字 append/backspace/submit (v1 では未使用、汎用ユーティリティ) | UnityEngine.UI |
 | `KeypadKey` | 個別キー、Interact で親に SendCustomEvent | (Udon Interact) |
-| `ResultRow` | 結果カードの 1 行分の状態 (固定 `_index`)、`SetData(name, owner, trackCount, thumbIndex)` で表示更新、`#SelectButton.onClick` → `OnSelect` → `Controller.OnSelectResultByIndex(_index)` | UnityEngine.UI, TMPro |
+| `ResultRow` | 結果カードの 1 行分の状態 (固定 `_index`)、`SetData(name, owner, trackCount, ytThumbIndex)` で表示更新、`Start` で controller theme から色を pull、`#SelectButton.onClick` → `OnSelect` → `Controller.OnSelectResultByIndex(_index)` | UnityEngine.UI, TMPro |
 
 すべて `[UdonBehaviourSyncMode(BehaviourSyncMode.None)]`。
 
@@ -477,7 +488,7 @@ Postimages, Reddit, Twitter, VRCDN, VRChat, Ytimg
 #### 罠
 - API のレスポンスから取得した URL string は **VRCUrl runtime 構築不可** で baked にできない
 - `playlist.vrc-hub.com` の image proxy 案は untrusted host 問題で UX 劣化
-- → 解決策は **Editor 時に baked URL[] に i.ytimg.com 等の trusted host URL を直接書き込む** 設計 (vhub-playlist#92 で server 側 yt-thumb-direct pool 提案中)
+- → 解決策は **Editor 時に baked URL[] に i.ytimg.com 等の trusted host URL を直接書き込む** 設計 ([vhub-playlist#92](https://github.com/kisaragi-official/vhub-playlist/issues/92) PR #94 merged + 本番デプロイ済、client 側 PR #29 merged + 実機サムネ表示確認済 / 2026-05-01)
 
 ### 13.4 Editor 表示と実機表示の挙動差 (要許容)
 
