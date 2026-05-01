@@ -20,3 +20,6 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Removed `#TabSearch` button. The Search input field's `OnEndEdit` (Enter / VRChat keyboard close) now triggers `Controller.RequestSearch` directly, replacing the dual "tab + input field" pattern with a single Enter-to-search flow. Placeholder text updated to hint at the Enter behavior. Empty tab slot will be filled by a News tab once [vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97) ships (#23 Phase A-3)
+
+### Fixed
+- `_AutoLoadPopular` race: if the user clicked a different tab during the 2-second auto-load delay, the delayed callback still called `RequestPopular(0)` and overwrote the user's tab selection (Popular tab snapped back to active blue, Recent went to inactive surface). `_AutoLoadPopular` now early-returns when `_activeTabIndex != -1`, so any user interaction before the delay elapses suppresses the auto-load (#23 Phase A user-reported VR test bug)

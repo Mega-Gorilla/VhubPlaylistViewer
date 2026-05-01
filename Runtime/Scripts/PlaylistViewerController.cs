@@ -174,6 +174,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         public void _AutoLoadPopular()
         {
+            // ユーザーがすでにタブをクリックしていたら auto-load を抑制 (race condition fix)。
+            // 旧: _autoLoadDelay (2s) 経過後に無条件で RequestPopular(0) を呼んでいたため、
+            //     ユーザーが auto-load 発火前に Recent をクリックすると、後から Popular に
+            //     上書きされて見えていた (#23 Phase A 実機テストでユーザー指摘)。
+            if (_activeTabIndex != -1) return;
             RequestPopular(0);
         }
 
