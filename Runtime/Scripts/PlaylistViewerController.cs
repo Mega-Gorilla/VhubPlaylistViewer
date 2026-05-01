@@ -98,7 +98,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             _animator = GetComponent<Animator>();
 
-            Transform[] trans = GetComponentsInChildren<Transform>(true);
+            // Controller GameObject が #-prefix children の親に居ない構成 (例: Canvas の sibling として
+            // PlaylistViewer/Controller に配置され、#SearchView 等が PlaylistViewer/Canvas/... の子)
+            // でも bind できるよう、transform.parent (= prefab root) から全スキャンする。
+            // Controller が prefab root (parent==null) の場合は自身から (=従来挙動)。
+            Transform searchRoot = transform.parent != null ? transform.parent : transform;
+            Transform[] trans = searchRoot.GetComponentsInChildren<Transform>(true);
             for (int i = 0; i < trans.Length; i++)
             {
                 Transform t = trans[i];
