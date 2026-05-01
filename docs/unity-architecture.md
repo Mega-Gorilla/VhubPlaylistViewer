@@ -115,12 +115,13 @@ PlaylistViewer (Controller / ListingClient / SearchClient / PlaylistResolver / T
     │   │   ├── #BackButton          (Button、左寄せ、Button.onClick → OnBackToSearch)
     │   │   │   └── #Icon            (Image, UI_IconBack)
     │   │   └── #SectionTitle        (TMP_Text "プレイリスト詳細")
-    │   ├── #PlaylistName / #OwnerName / #TotalTracks
+    │   ├── #PlaylistThumbnail       (Phase A-4: cover art、RawImage 200×200 左、ytThumbIndex から LoadYtThumbnail)
+    │   ├── #PlaylistName / #OwnerName / #TotalTracks (cover row 右列、Phase A-4 で reposition)
     │   ├── (ScrollRect tracks)
     │   │   └── #TrackListContent
-    │   │       └── #TrackTemplate   (非アクティブ default、§13.1.2)
-    │   │           ├── #Position
-    │   │           └── #Title
+    │   │       └── #TrackTemplate   (非アクティブ default、§13.1.2、Phase A-4 で card-styled: BG=`UI_RoundedPanel` α=0.08 + height 60)
+    │   │           ├── #Position    (左 40 幅、center align、muted color)
+    │   │           └── #Title       (右 stretch、left align、primary color)
     │   └── #UrlLabel / #UrlField    (TMP_InputField、readOnly、コピー専用)
     ├── #LoadingOverlay              (Canvas 直下)
     │   ├── #LoadingMessage          (TMP_Text)
@@ -279,7 +280,7 @@ KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲す
 
 | クラス | 責任 | 主な依存 |
 |---|---|---|
-| `PlaylistViewerController` | 状態機械、UI バインド、子コンポーネント協調、テーマカラー source-of-truth (§13.5)、active tab tracking、SetActive ベース view 切替 (Animator は #13 で optional 演出担当) | UnityEngine.UI, TMPro, VRC.SDK3.Data |
+| `PlaylistViewerController` | 状態機械、UI バインド (§13.6 BindHierarchy で `#PlaylistThumbnail` 含め自動バインド)、子コンポーネント協調、テーマカラー source-of-truth (§13.5)、active tab tracking、SetActive ベース view 切替 (Animator は #13 で optional 演出担当)、listing item から `_pendingOwnerName` / `_pendingYtThumbIndex` を carry-over して DetailView の cover art に反映 (Phase A-4) | UnityEngine.UI, TMPro, VRC.SDK3.Data |
 | `ListingClient` | popular / recent ページの GET、JSON パース | VRC.SDK3.StringLoading |
 | `SearchClient` | 検索 URL の動的取得 (VRCUrlInputField) と GET | VRC.SDK3.StringLoading |
 | `PlaylistResolver` | /vrcurl/playlist/{i} の GET (vhub-playlist#91 v4: 200 JSON 直接)、トラック一覧パース | VRC.SDK3.StringLoading |
@@ -632,12 +633,17 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
 5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` の 2 タブを child に再 parent (HLG が 50% 等幅自動配分)。News API ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) デプロイ後に `#TabNews` を 3 つ目として追加予定 (33% 配分に戻る)
 6. **SearchView `Scroll View`** repos: anchoredPos (0,-114) size (720,780) で Header/SearchBar/TabRow の下に配置
 7. **`#DetailHeader`** (`#DetailView` の child): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-104) size (-16,64)、Image surface tint。`#BackButton` を child に再 parent (anchor (0,0.5)-(0,0.5) pivot (0,0.5) anchoredPos (8,0) size (56,48)、`#Icon` child UI_IconBack 28×28)。`#SectionTitle` TMP child ("プレイリスト詳細" font 36 white center)
-8. **DetailView meta row** shift: `#PlaylistName/OwnerName/TotalTracks` を `#DetailHeader` 分 (164px) 下にシフト (anchoredPos.y -= 164)
-9. **DetailView `Scroll View`** resize: anchoredPos (0,-26) sizeDelta (-40,-573) で `#DetailHeader` + meta row と `#UrlLabel/UrlField` の間に収める
-10. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
-11. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
-12. **Controller Inspector**: `_tabPopularBg` / `_tabRecentBg` (2 Image refs) + `_tabSearchBg` は **意図的に未割当 (null)** のまま (Phase A-3 で `#TabSearch` を削除済、News tab ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) デプロイ後に `#TabNews` を追加するか、フィールド自体の削除 PR を出すかは別 cycle 判断。`UpdateTabVisuals` は null 安全) + `_surfacePanels[]` (`#Header BG`, `#SearchBar BG`, `#DetailHeader BG`, `#SearchInputField` BG, `#UrlField` BG, `#BackButton` BG など) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)
-13. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button
+8. **`#PlaylistThumbnail`** (Phase A-4 新設、`#DetailView` の child): RawImage、anchor (0,1)-(0,1) pivot (0,1) anchoredPos (32,-184) sizeDelta (200, 200) で cover row 左に配置。default texture: `UI_ThumbPlaceholder` (PR #32)。SiblingIndex は `#DetailHeader` の直後 (= Scroll View より早い render order) に置くことで Scroll View 内 track が thumbnail 上に render
+9. **DetailView meta row** reposition (Phase A-4 で cover row 右列に再配置):
+   - `#PlaylistName`: anchor (0,1)-(1,1) pivot (0,1) anchoredPos (256,-188) sizeDelta (-280, 70) — 200 thumb + 24 gap = 224 左 padding + 32 右 padding
+   - `#OwnerName`: anchor (0,1)-(0.5,1) pivot (0,1) anchoredPos (256,-266) sizeDelta (0, 30)
+   - `#TotalTracks`: anchor (0.5,1)-(1,1) pivot (1,1) anchoredPos (-32,-266) sizeDelta (0, 30)
+10. **DetailView `Scroll View`** resize: anchoredPos (0,-85.5) sizeDelta (-40,-677) (cover row 224px 分縮小、~347 高さ)。Scroll View の Image color を α=0 に (BG 透過、cards が canvas に直接描画される)
+11. **`#TrackTemplate` restyle (Phase A-4)**: 自身に Image component 追加 (sprite=`UI_RoundedPanel` Sliced color=(1,1,1,0.08) surface tint pre-bake、clone は色継承)。sizeDelta (-3, 60)、`SetActive(false)` 維持。`#Position` rect: anchor (0,0)-(0,1) pivot (0,0.5) anchoredPos (16,0) sizeDelta (40, 0) で左固定幅。`#Title` rect: anchor (0,0)-(1,1) pivot (0,0.5) anchoredPos (72,0) sizeDelta (-96,0) で stretch with paddings
+12. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
+13. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
+14. **Controller Inspector**: `_tabPopularBg` / `_tabRecentBg` (2 Image refs) + `_tabSearchBg` は **意図的に未割当 (null)** のまま (Phase A-3 で `#TabSearch` を削除済、News tab ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) デプロイ後に `#TabNews` を追加するか、フィールド自体の削除 PR を出すかは別 cycle 判断。`UpdateTabVisuals` は null 安全) + `_surfacePanels[]` (`#Header BG`, `#SearchBar BG`, `#DetailHeader BG`, `#SearchInputField` BG, `#UrlField` BG, `#BackButton` BG など) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)。**`_detailPlaylistThumbnail` は `BindHierarchy` 自動バインド** (Inspector 配線不要、`#PlaylistThumbnail` 名前一致で hit)
+15. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button
 
 #### UdonSharp 1.x で UdonBehaviour を MCP/Editor から add する pattern
 

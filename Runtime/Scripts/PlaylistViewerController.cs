@@ -106,6 +106,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private TextMeshProUGUI _detailOwnerName;
         private TextMeshProUGUI _detailTotalTracks;
         private TMP_InputField _detailUrlField;
+        private RawImage _detailPlaylistThumbnail; // Phase A-4: cover art (#PlaylistThumbnail)
         private Animator _animator;
 
         // ----- Runtime state -----
@@ -114,7 +115,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private string _currentTab;       // "popular" / "recent" / "search"
         private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search、UpdateTabVisuals が読む
         private string _currentPlaylistId;
-        private string _pendingOwnerName; // SelectResult 時に listing item から carry over
+        private string _pendingOwnerName;     // SelectResult 時に listing item から carry over
+        private int _pendingYtThumbIndex = -1; // 同上、Phase A-4 で DetailView の cover art に使用
         private string _trackCountUnit;
 
         // 検索結果のキャッシュ (DataDictionary 直保持)
@@ -206,6 +208,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                     // 注: detail view では #TotalTracks を使う。per-row 側の #TrackCount との衝突回避のため
                     case "#TotalTracks": _detailTotalTracks = t.GetComponent<TextMeshProUGUI>(); break;
                     case "#UrlField": _detailUrlField = t.GetComponent<TMP_InputField>(); break;
+                    case "#PlaylistThumbnail": _detailPlaylistThumbnail = t.GetComponent<RawImage>(); break;
                 }
             }
         }
@@ -465,6 +468,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_detailTotalTracks != null) _detailTotalTracks.text = (tracks != null ? tracks.Count.ToString() : "0") + " " + _trackCountUnit;
             if (_detailUrlField != null) _detailUrlField.text = _baseUrl + "/r/default/" + playlistId;
 
+            // Phase A-4: cover art (i.ytimg.com 経由)。-1 / 範囲外なら ThumbnailLoader 側で dummy fallback
+            if (_detailPlaylistThumbnail != null && _thumbnailLoader != null)
+            {
+                _thumbnailLoader.LoadYtThumbnail(_pendingYtThumbIndex, _detailPlaylistThumbnail);
+            }
+
             _currentPlaylistId = playlistId;
             RenderTrackList(tracks);
 
@@ -531,6 +540,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             DataToken ownerToken;
             _pendingOwnerName = "";
             if (item.TryGetValue("ownerName", out ownerToken) && ownerToken.TokenType == TokenType.String) _pendingOwnerName = ownerToken.String;
+
+            // Phase A-4: DetailView の cover art に使う ytThumbIndex も同様に carry-over
+            // (resolve API は ytThumbIndex を返さないため、listing item から確保しておく)
+            _pendingYtThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
 
             int resolveIndex = TryGetInt(item, "resolveIndex", -1);
             if (resolveIndex < 0 || playlistId.Length == 0)
