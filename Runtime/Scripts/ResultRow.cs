@@ -44,7 +44,40 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [Tooltip("owner 名の最大文字数。超過分は末尾を「…」で省略。#Owner rect 280 + fontSize 20 で全角 14 + margin")]
         [SerializeField] private int _ownerMaxChars = 16;
 
+        [Header("Card visuals (#23 Phase A)")]
+        [Tooltip("カード背景 Image (= #SelectButton の Image を兼用)。Button.colors の transition と組み合わせて hover 表現")]
+        [SerializeField] private Image _backgroundImage;
+        [Tooltip("hover/press 色を controller のテーマから流し込む対象 Button (= #SelectButton)")]
+        [SerializeField] private Button _selectButton;
+
         public int Index => _index;
+
+        /// <summary>
+        /// Controller のテーマカラーを引いて自身の text/background に反映する (#23 Phase A)。
+        /// Controller が Inspector でアサイン済前提。null なら no-op。
+        /// </summary>
+        void Start()
+        {
+            if (_controller == null) return;
+
+            if (_nameText != null) _nameText.color = _controller.TextPrimaryColor;
+            if (_ownerText != null) _ownerText.color = _controller.TextMutedColor;
+            if (_trackCountText != null) _trackCountText.color = _controller.TextMutedColor;
+
+            // Background sprite は scene で UI_RoundedPanel に差し替え済前提。
+            // Image.color は white (1,1,1,1) 維持して、実際の透明度は Button.colors で multiply tint する。
+            if (_backgroundImage != null) _backgroundImage.color = Color.white;
+
+            if (_selectButton != null)
+            {
+                ColorBlock cb = _selectButton.colors;
+                cb.normalColor = _controller.SurfaceColor;
+                cb.highlightedColor = _controller.SurfaceHoverColor;
+                cb.pressedColor = _controller.SurfaceHoverColor;
+                cb.selectedColor = _controller.SurfaceColor;
+                _selectButton.colors = cb;
+            }
+        }
 
         /// <summary>
         /// Controller から呼ばれる。row が表示すべきデータをセットし、SetActive(true) で表示する。
