@@ -8,7 +8,18 @@ VRChat ワールド向けの **VHub PlayList プレイリスト検索 / 閲覧 U
 
 ## ステータス
 
-設計フェーズ。実装は未着手。
+**Alpha (開発中)** — Runtime / Editor 実装完了 + サーバー API v4 対応済 (2026-05)。prefab 同梱前の実機検証段階。
+
+- ✅ Runtime UdonSharp スクリプト群 (検索 / 詳細表示 / サムネ表示) 実装完了
+- ✅ Editor の Pool Generator / AllowedDomainsHelper 実装完了
+- ✅ サーバー API v4 (resolve 200 JSON / yt-thumb-direct pool) サポート
+- ✅ 実機 VR でサムネ表示確認済 (Allow Untrusted URLs OFF プレイヤーでも動作)
+- ⏳ Prefab / Animator / Material 同梱 → [#12](../../issues/12) / [#13](../../issues/13)
+- ⏳ 完成版 README + 導入手順 → [#14](../../issues/14)
+- ⏳ ライセンス確定 → [#15](../../issues/15)
+- ⏳ VPM listing 登録 → [#17](../../issues/17)
+
+VCC からの正式インストール提供は #17 完了後を予定。
 
 ## 関連プロジェクト
 
@@ -17,4 +28,4 @@ VRChat ワールド向けの **VHub PlayList プレイリスト検索 / 閲覧 U
 
 ## ライセンス
 
-未定。
+未定 (検討中: [#15](../../issues/15))。
