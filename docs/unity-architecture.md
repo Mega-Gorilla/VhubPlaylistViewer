@@ -391,7 +391,7 @@ KawaPlayer / VIB から学んだベストプラクティス:
 
 1. **Search 機能は VRChat の Allowed Domains 経由でしか動作しない** — テスト時にローカルワールドでは制限がかかる場合あり
 2. **VRCImageDownloader の同時ダウンロード数制限** — VRChat 側の仕様で詳細不明。多数のサムネを一度に表示する場合、キューイング必要
-3. **Pool ID `playlist` / `default-thumb` はサーバー側でも新規** — サーバー実装が完了するまでクライアントのテストは限定的
+3. **Server v4 前提** — resolve 200 JSON ([vhub-playlist#91](https://github.com/kisaragi-official/vhub-playlist/issues/91)) と yt-thumb-direct baking API ([vhub-playlist#92](https://github.com/kisaragi-official/vhub-playlist/issues/92)) が必要 (両方 PR merged + 本番デプロイ済 / 2026-05-01)。古い `default-thumb` redirect pool は使用しない (PR #29 で client から削除済)
 4. **`VRCUrlInputField.text` setter は Udon に非公開**:
    - Unity 実機検証で UdonSharp が `Method is not exposed to Udon: '_targetField.text'` エラーを出すことが判明
    - 結果: 3D キーパッドを含む任意の Udon コードから VRCUrlInputField のテキストフィールドへの書き込みは不可
@@ -548,7 +548,7 @@ UI 全体の配色を 1 箇所 (`PlaylistViewerController` の Inspector) で管
 #### 適用パターン
 
 - **Static panels**: `_surfacePanels[] / _overlayPanels[] / _errorIcon` に Inspector で Image 配列 wire → `Start` の `ApplyThemeOnStart()` が `image.color = surfaceColor` 等で一括 tint
-- **Active state (タブ)**: `_tabPopularBg / _tabRecentBg / _tabSearchBg` に各 Image wire → `_activeTabIndex` (-1/0/1/2) を `RequestPopular/Recent/Search` で更新 → `UpdateTabVisuals()` が **active タブ = `_primaryColor`、inactive = `_surfaceColor`** を都度設定
+- **Active state (タブ)**: 現状 visible なのは `_tabPopularBg` / `_tabRecentBg` の **2 タブのみ** (Phase A-3 で `#TabSearch` 削除、Search は input field の `OnEndEdit` で発火)。`_tabSearchBg` は **互換のため script に残るが意図的に null** (`UpdateTabVisuals` は null 安全)、News tab ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) デプロイ後に再利用 or 削除を判断。`_activeTabIndex` (-1/0/1/2) を `RequestPopular/Recent/Search` で更新 → `UpdateTabVisuals()` が **active タブ = `_primaryColor`、inactive = `_surfaceColor`** を都度設定
 - **Hover/press (ResultRow)**: 各 ResultRow.Start で `ColorBlock cb = button.colors; cb.normalColor = surfaceColor; cb.highlightedColor = surfaceHoverColor; ...; button.colors = cb;` を controller の theme から流し込む。Image.color 自体は `Color.white` 維持し、Button の ColorTint multiply で実効 α を生成
 
 #### 罠

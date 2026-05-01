@@ -530,6 +530,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         /// <summary>
         /// ResultRow.OnSelect から呼ばれる。Pre-allocated 各行が自身の固定 _index を渡してくる。
+        ///
+        /// 重要: pending メタ (`_pendingOwnerName` / `_pendingYtThumbIndex`) の更新は
+        /// **resolver が request を accept した後 (`Resolve` が `true` を返した後)** にのみ行う。
+        /// busy 中の resolver に重ねて click しても、in-flight な playlist と pending メタが desync
+        /// しないようにするためのレビュー指摘 fix (PR #34)。validation も pending 上書きより前に
+        /// 行うことで、不正行を click しても以前の pending が維持される。
         /// </summary>
         public void OnSelectResultByIndex(int rowIndex)
         {
@@ -537,19 +543,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_currentItems[rowIndex].TokenType != TokenType.DataDictionary) return;
             DataDictionary item = _currentItems[rowIndex].DataDictionary;
 
+            // 1. Validate first — 失敗時は pending を触らない
             DataToken idToken;
             string playlistId = "";
             if (item.TryGetValue("id", out idToken) && idToken.TokenType == TokenType.String) playlistId = idToken.String;
-
-            // ownerName は detail API のレスポンスに含まれないので、ここで listing item から拾って保存
-            DataToken ownerToken;
-            _pendingOwnerName = "";
-            if (item.TryGetValue("ownerName", out ownerToken) && ownerToken.TokenType == TokenType.String) _pendingOwnerName = ownerToken.String;
-
-            // Phase A-4: DetailView の cover art に使う ytThumbIndex も同様に carry-over
-            // (resolve API は ytThumbIndex を返さないため、listing item から確保しておく)
-            _pendingYtThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
-
             int resolveIndex = TryGetInt(item, "resolveIndex", -1);
             if (resolveIndex < 0 || playlistId.Length == 0)
             {
@@ -557,8 +554,20 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 return;
             }
 
+            // 2. ローカルに carry-over 候補値を集める (この時点では pending field を上書きしない)
+            string ownerName = "";
+            DataToken ownerToken;
+            if (item.TryGetValue("ownerName", out ownerToken) && ownerToken.TokenType == TokenType.String) ownerName = ownerToken.String;
+            int ytThumbIndex = TryGetInt(item, "ytThumbIndex", -1);
+
+            // 3. resolver に request を投げ、accept されたら pending を atomically 更新
+            if (_resolver == null) { ReportError("PlaylistResolver not assigned"); return; }
+            if (!_resolver.Resolve(resolveIndex, playlistId)) return; // busy / 不正等で reject、pending は前のまま
+
+            // 4. 受理後に pending 更新 + state 遷移
+            _pendingOwnerName = ownerName;
+            _pendingYtThumbIndex = ytThumbIndex;
             SetState(STATE_LOADING);
-            if (_resolver != null) _resolver.Resolve(resolveIndex, playlistId);
         }
 
         private void RenderTrackList(DataList tracks)
