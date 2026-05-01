@@ -131,6 +131,15 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             if (_loadingOverlay != null) _loadingOverlay.SetActive(newState == STATE_LOADING);
             if (_errorOverlay != null) _errorOverlay.SetActive(newState == STATE_ERROR);
 
+            // View 排他切替: LOADING/ERROR は overlay でカバーするので前の view を保持。
+            // Animator (#13) 配置後も SetActive で表示自体を制御し、Animator は α fade 等の演出を担当する想定。
+            if (newState != STATE_LOADING && newState != STATE_ERROR)
+            {
+                bool detailVisible = (newState == STATE_DETAIL_VIEW);
+                if (_searchView != null) _searchView.SetActive(!detailVisible);
+                if (_detailView != null) _detailView.SetActive(detailVisible);
+            }
+
             if (_animator != null)
             {
                 _animator.SetBool("IsDetailView", newState == STATE_DETAIL_VIEW);
