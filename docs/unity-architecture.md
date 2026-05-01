@@ -544,17 +544,71 @@ UI 全体の配色を 1 箇所 (`PlaylistViewerController` の Inspector) で管
 
 Phosphor Icons は **MIT** ライセンス。本リポジトリ license 確定後 (#15) `THIRD_PARTY_NOTICES.md` で attribution 予定。
 
+#### Canvas hierarchy / レイアウト (Phase A-3 reorganized、768×1024 portrait)
+
+Canvas を **4-row 階層** で構成し、Header はビュー横断、SearchView/DetailView 内で section header → meta → scroll の順に並べる:
+
+```
+Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
+├── #Header                    (top-stretch, 88px) — ビュー横断、常時表示の brand title
+│   ├── BG: UI_RoundedPanel (surface tint via _surfacePanels[])
+│   └── #Title TMP "VHub PlaylistViewer" (font 48, primary color, center)
+├── #SearchView                (中央 marker、children は世界座標で配置)
+│   ├── #SearchBar             (anchoredPos y=380, size 720×64) — 検索入力 row
+│   │   ├── BG: UI_RoundedPanel (surface)
+│   │   ├── #SearchIcon        (left, anchor 0,0.5, size 40×40) UI_IconSearch (text-muted tint)
+│   │   └── #SearchInputField  (stretch、56px left padding for icon、16px right)
+│   ├── #TabRow                (anchoredPos y=312, size 720×56) — タブ row
+│   │   └── HorizontalLayoutGroup (childForceExpandWidth、spacing=8)
+│   │       ├── #TabPopular    (HLG が幅再計算、~232×56)
+│   │       ├── #TabRecent
+│   │       └── #TabSearch
+│   └── Scroll View            (anchoredPos y=-114, size 720×780) — 結果カードリスト
+│       └── Viewport / Content / #ResultRow0..19
+├── #DetailView                (stretch fills canvas)
+│   ├── #DetailHeader          (top-stretch, anchoredPos y=-104, size auto×64) — Back + section title
+│   │   ├── BG: UI_RoundedPanel (surface)
+│   │   ├── #BackButton        (left, 56×48、UI_RoundedPanel BG + #Icon UI_IconBack 28×28 center)
+│   │   └── #SectionTitle TMP  "プレイリスト詳細" (font 36, center)
+│   ├── #PlaylistName          (anchoredPos y=-219, size auto×70)
+│   ├── #OwnerName             (anchoredPos y=-274, size auto×30)
+│   ├── #TotalTracks           (anchoredPos y=-274, size auto×30)
+│   ├── Scroll View            (stretch, anchoredPos y=-26, sizeDelta -40,-573)
+│   └── #UrlLabel / #UrlField  (bottom-anchored、既存維持)
+├── #LoadingOverlay            (stretch fills canvas)
+│   ├── BG: Image (overlay tint via _overlayPanels[])
+│   ├── #LoadingSpinner        (center, size 96×96, UI_LoadingSpinner + UISpinner)
+│   └── #LoadingMessage TMP
+└── #ErrorOverlay              (stretch fills canvas)
+    ├── BG: Image (overlay tint)
+    ├── #ErrorIcon             (center anchoredPos (0, 80), size 96×96, UI_IconError, errorColor)
+    └── #ErrorMessage TMP
+```
+
+**設計判断**:
+- `#Header` を Canvas 直下にしたのは **ビュー横断で常時表示** (DetailView 表示時も title 維持)
+- `#SearchView/#DetailView` は **section grouping marker** で、SetActive(true/false) で切替対象 → 中身の組み換えは保ちつつ、controller の SetState ロジックは維持
+- `#SearchBar` `#TabRow` `#DetailHeader` は **明示的グルーピング container** で、見た目だけでなく hierarchy 上で関係性を表現 → prefab 化担当者・将来のデザイナーが構造を読みやすく
+- `#TabRow` は HorizontalLayoutGroup で **3 タブ等幅自動配置** (手動座標指定の y バラつき問題を排除)
+- `#DetailHeader` の section title (`プレイリスト詳細`) は **静的テキスト** で localization は別途検討 (V1 は日本語固定)
+
 #### 再構築用 scene 配線手順 (prefab 化 #12 で必要)
 
-testing-chamber 動作確認済の wiring。`#12` で `Runtime/Prefabs/PlaylistViewer.prefab` を export する際の参考:
+testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/PlaylistViewer.prefab` を export する際の参考:
 
-1. **Tab Image** (`#TabPopular/Recent/Search`): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = None` (色は controller が制御)
+1. **Tab Image** (`#TabPopular/Recent/Search`): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = None` (色は controller が制御)。HLG 内では sizeDelta 0、anchor (0,0)-(1,1)
 2. **ResultRow `#SelectButton`** (20 行): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = ColorTint` (ResultRow.Start が Button.colors を上書き)
-3. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
-4. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
-5. **`#BackButton`**: sprite=`UI_RoundedPanel` Sliced、Button transition=ColorTint
-6. **Controller Inspector**: `_tabPopularBg/Recent/Search` (3 Image refs) + `_surfacePanels[]` (SearchInputField/UrlField/BackButton の Image 群) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)
-7. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button
+3. **`#Header`** (Canvas 直下): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-8) size (-16, 88)、Image sprite=`UI_RoundedPanel` Sliced color=white surface tint。Title TMP child (text "VHub PlaylistViewer" font 48 white center)
+4. **`#SearchBar`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,380) size (720,64)、Image surface tint、`#SearchInputField` を再 parent + `#SearchIcon` (UI_IconSearch、left 16px、size 40×40) child 追加
+5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、3 タブを child に再 parent
+6. **SearchView `Scroll View`** repos: anchoredPos (0,-114) size (720,780) で Header/SearchBar/TabRow の下に配置
+7. **`#DetailHeader`** (`#DetailView` の child): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-104) size (-16,64)、Image surface tint。`#BackButton` を child に再 parent (anchor (0,0.5)-(0,0.5) pivot (0,0.5) anchoredPos (8,0) size (56,48)、`#Icon` child UI_IconBack 28×28)。`#SectionTitle` TMP child ("プレイリスト詳細" font 36 white center)
+8. **DetailView meta row** shift: `#PlaylistName/OwnerName/TotalTracks` を `#DetailHeader` 分 (164px) 下にシフト (anchoredPos.y -= 164)
+9. **DetailView `Scroll View`** resize: anchoredPos (0,-26) sizeDelta (-40,-573) で `#DetailHeader` + meta row と `#UrlLabel/UrlField` の間に収める
+10. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
+11. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
+12. **Controller Inspector**: `_tabPopularBg/Recent/Search` (3 Image refs) + `_surfacePanels[]` (`#Header BG`, `#SearchBar BG`, `#DetailHeader BG`, `#SearchInputField` BG, `#UrlField` BG, `#BackButton` BG など) + `_overlayPanels[]` (LoadingOverlay/ErrorOverlay の Image) + `_errorIcon` (`#ErrorIcon` Image)
+13. **ResultRow Inspector** (各 20 行): `_backgroundImage` ← `#SelectButton` の Image、`_selectButton` ← 同 Button
 
 #### UdonSharp 1.x で UdonBehaviour を MCP/Editor から add する pattern
 

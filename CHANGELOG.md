@@ -15,3 +15,4 @@ All notable changes to this project will be documented in this file.
 - `UISpinner` UdonBehaviour for the loading overlay (#23 Phase A)
 - Theme color SerializeFields and tab active-state tracking on `PlaylistViewerController` (#23 Phase A)
 - ResultRow card visuals: hover/press color via `Button.colors`, text primary/muted tint pulled from controller theme (#23 Phase A)
+- SearchView/DetailView layout reorganization: brand `#Header` (top, "VHub PlaylistViewer"), grouped `#SearchBar` (search icon + input), `#TabRow` (HorizontalLayoutGroup, 3 tabs equal-width), and `#DetailHeader` (BackButton + section title) — testing-chamber scene wiring done in MCP, documented in `docs/unity-architecture.md` §13.6 for the upcoming #12 prefab export (#23 Phase A-3)
