@@ -39,10 +39,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private string _trackCountSuffix = " tracks";
 
         [Header("Text length limits (TMP overflow=Ellipsis/Truncate が VRChat で頂点ゼロ bug を起こすため C# 側で truncate)")]
-        [Tooltip("playlist 名の最大文字数。超過分は末尾を「…」で省略")]
-        [SerializeField] private int _nameMaxChars = 30;
-        [Tooltip("owner 名の最大文字数。超過分は末尾を「…」で省略")]
-        [SerializeField] private int _ownerMaxChars = 20;
+        [Tooltip("playlist 名の最大文字数。超過分は末尾を「…」で省略。#Name rect 648 + fontSize 36 で全角 18 + margin")]
+        [SerializeField] private int _nameMaxChars = 20;
+        [Tooltip("owner 名の最大文字数。超過分は末尾を「…」で省略。#Owner rect 280 + fontSize 20 で全角 14 + margin")]
+        [SerializeField] private int _ownerMaxChars = 16;
 
         public int Index => _index;
 
