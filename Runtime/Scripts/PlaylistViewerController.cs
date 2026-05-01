@@ -45,10 +45,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private int _detailNameMaxChars = 15;
         [Tooltip("詳細表示の owner 名最大文字数。超過分は末尾を「…」で省略。rect 384 + fontSize 28 で全角 13.7")]
         [SerializeField] private int _detailOwnerMaxChars = 15;
-        [Tooltip("track 一覧の各 title **safety cap** weight (半角 ASCII/半角カナ=1、CJK/全角=2)。" +
-                 "通常は VerticalLayoutGroup + ContentSizeFitter で 2 行 wrap + 可変 cell サイズで対応するが、" +
-                 "極端に長い title (200 weight 超) で UI が崩壊しないよう C# 側で safety truncate (#23 polish)。")]
-        [SerializeField] private int _trackTitleMaxChars = 200;
+        [Tooltip("(deprecated、現在 #Title は完全表示) " +
+                 "polish PR でユーザー要望により `RenderTrackList` の TruncateByWeight 呼出を削除、" +
+                 "TMP に raw title を渡す方針に変更。VerticalLayoutGroup + ContentSizeFitter が長 title の" +
+                 "wrap + 可変 cell サイズを処理する。フィールドは互換のため残存。")]
+        [SerializeField] private int _trackTitleMaxChars = 0;
 
         [Header("Result rows (Pre-allocated, 20 行を prefab に物理配置して各行に ResultRow をアタッチ)")]
         [Tooltip("固定 20 行の ResultRow 参照。prefab で 0..19 の順に並べる")]
@@ -684,9 +685,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                         string title = "";
                         if (tr.TryGetValue("title", out titleToken) && titleToken.TokenType == TokenType.String) title = titleToken.String;
                         TextMeshProUGUI tmp = c.GetComponent<TextMeshProUGUI>();
-                        // Safety cap (極端に長い title で UI 崩壊しないよう、weight 単位で打ち切り)。
-                        // 通常範囲 (~100 weight 以下) は無加工で TMP に渡し、wrap=true + overflow=Overflow + CSF で 2 行表示。
-                        if (tmp != null) tmp.text = TruncateByWeight(title, _trackTitleMaxChars);
+                        // C# 側 truncate を **廃止** (polish PR、ユーザー要望「...表示を廃止して #Title を端まで表示」)。
+                        // raw title を TMP に渡し、wrap=true + overflow=Overflow + VLG/CSF が wrap + 可変 cell 高さを処理する。
+                        if (tmp != null) tmp.text = title;
                     }
                 }
             }
