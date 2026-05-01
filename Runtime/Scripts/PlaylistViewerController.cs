@@ -41,12 +41,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         [SerializeField] private int _pageSize = 20;
 
         [Header("Detail view text length limits (TMP overflow bug 回避、docs/unity-architecture.md §13.1 参照)")]
-        [Tooltip("詳細表示の playlist 名最大文字数。超過分は末尾を「…」で省略")]
-        [SerializeField] private int _detailNameMaxChars = 50;
-        [Tooltip("詳細表示の owner 名最大文字数。超過分は末尾を「…」で省略")]
-        [SerializeField] private int _detailOwnerMaxChars = 30;
-        [Tooltip("track 一覧の各 title 最大文字数。超過分は末尾を「…」で省略")]
-        [SerializeField] private int _trackTitleMaxChars = 50;
+        [Tooltip("詳細表示の playlist 名最大文字数。超過分は末尾を「…」で省略。rect 728 + fontSize 56 で全角 13")]
+        [SerializeField] private int _detailNameMaxChars = 15;
+        [Tooltip("詳細表示の owner 名最大文字数。超過分は末尾を「…」で省略。rect 384 + fontSize 28 で全角 13.7")]
+        [SerializeField] private int _detailOwnerMaxChars = 15;
+        [Tooltip("track 一覧の各 title 最大文字数。超過分は末尾を「…」で省略。rect 658 + fontSize 36 で全角 18 + margin")]
+        [SerializeField] private int _trackTitleMaxChars = 22;
 
         [Header("Result rows (Pre-allocated, 20 行を prefab に物理配置して各行に ResultRow をアタッチ)")]
         [Tooltip("固定 20 行の ResultRow 参照。prefab で 0..19 の順に並べる")]
