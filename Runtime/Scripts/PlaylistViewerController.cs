@@ -300,37 +300,42 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             SetState(STATE_SEARCH_VIEW);
         }
 
+        // Request* methods: client が **request を accept した後** にのみ tab/state を更新する。
+        // PR #35 review fix: 旧コードは accept 前に `_currentTab` を変えていたため、busy reject や
+        // 並行 client (SearchClient と ListingClient が独立 _isLoading を持つ) で in-flight な
+        // request の response が誤 tab visual / 誤 schema で描画される race を生じていた。
+
         public void RequestPopular(int page)
         {
             if (_listingClient == null) { ReportError("ListingClient not assigned"); return; }
+            if (!_listingClient.LoadPopular(page)) return; // reject時は state 維持
             _currentTab = "popular";
             _activeTabIndex = 0;
             UpdateTabVisuals();
             _currentPage = page;
             SetState(STATE_LOADING);
-            _listingClient.LoadPopular(page);
         }
 
         public void RequestRecent(int page)
         {
             if (_listingClient == null) { ReportError("ListingClient not assigned"); return; }
+            if (!_listingClient.LoadRecent(page)) return;
             _currentTab = "recent";
             _activeTabIndex = 1;
             UpdateTabVisuals();
             _currentPage = page;
             SetState(STATE_LOADING);
-            _listingClient.LoadRecent(page);
         }
 
         public void RequestSearch()
         {
             if (_searchClient == null) { ReportError("SearchClient not assigned"); return; }
+            if (!_searchClient.SubmitSearch()) return;
             _currentTab = "search";
             _activeTabIndex = 2;
             UpdateTabVisuals();
             _currentPage = 0;
             SetState(STATE_LOADING);
-            _searchClient.SubmitSearch();
         }
 
         /// <summary>
@@ -340,12 +345,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         public void RequestNews()
         {
             if (_listingClient == null) { ReportError("ListingClient not assigned"); return; }
+            if (!_listingClient.LoadNews()) return;
             _currentTab = "news";
             _activeTabIndex = 3;
             UpdateTabVisuals();
             _currentPage = 0;
             SetState(STATE_LOADING);
-            _listingClient.LoadNews();
         }
 
         private void LoadPage(string tab, int page)
@@ -359,11 +364,16 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         /// <summary>
         /// ListingClient / SearchClient から呼ばれる。
+        /// `kind` は response を生んだ request の種別 ("popular" / "recent" / "search" / "news")。
+        /// kind が現 `_currentTab` と一致しないなら **stale** (ユーザーが別タブに移動済) として discard。
+        /// PR #35 review fix: SearchClient と ListingClient は独立 `_isLoading` を持つため
+        /// 並行 in-flight 可能、kind tagging で render schema を request 時点に固定する。
         /// </summary>
-        public void OnListingResultReceived(string json)
+        public void OnListingResultReceived(string json, string kind)
         {
+            if (kind != _currentTab) return; // stale response、user has moved on
             if (!ParseListingJson(json)) return;
-            RenderResultList();
+            RenderResultList(kind);
             SetState(STATE_SEARCH_VIEW);
         }
 
@@ -510,8 +520,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         /// <summary>
         /// Pre-allocated 20 行方式: _resultRows[] (固定) を順に走査し、count まで SetData、
         /// 余剰は Hide。動的 Instantiate しない (docs/unity-architecture.md §5.3 参照)。
+        /// `kind` は OnListingResultReceived で stale check 後に渡された response 種別 (PR #35 review)。
         /// </summary>
-        private void RenderResultList()
+        private void RenderResultList(string kind)
         {
             if (_resultRows == null || _resultRows.Length == 0) return;
 
@@ -536,7 +547,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                 }
                 DataDictionary item = _currentItems[i].DataDictionary;
 
-                if (_currentTab == "news")
+                if (kind == "news")
                 {
                     // News mode (vhub-playlist#97): items[] = {id, title, body, publishedAt, link?}
                     // ResultRow を再利用: title→#Name、body→#Owner、publishedAt 先頭 10 文字 (YYYY-MM-DD) →#TrackCount

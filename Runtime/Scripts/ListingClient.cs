@@ -29,70 +29,84 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         private bool _isLoading;
         private VRCUrl _pendingUrl;
+        private string _pendingKind = ""; // "popular" / "recent" / "news"、response 配信時に kind を controller へ渡す
 
-        public void LoadPopular(int page) { LoadInternal(_popularPagePool, page); }
-        public void LoadRecent(int page) { LoadInternal(_recentPagePool, page); }
+        /// <summary>
+        /// 受理: true、busy / 不正 (pool 未生成 / 範囲外 / VRCUrl 無効) で reject: false。
+        /// 呼び出し元 (Controller) は **true 受理後にのみ** `_currentTab` / state を更新すること
+        /// (PR #35 review: 連打 / 並行 client で response が誤 tab visual で render されるのを防ぐため)。
+        /// </summary>
+        public bool LoadPopular(int page) { return LoadInternal(_popularPagePool, page, "popular"); }
+        public bool LoadRecent(int page) { return LoadInternal(_recentPagePool, page, "recent"); }
 
         /// <summary>
         /// /api/vrc/news?p=0 を fetch する (V1 single page、vhub-playlist#97)。
+        /// 戻り値 semantics は LoadPopular/Recent と同じ。
         /// </summary>
-        public void LoadNews()
+        public bool LoadNews()
         {
             if (_isLoading)
             {
                 ReportError("Listing already loading");
-                return;
+                return false;
             }
             if (!Utilities.IsValid(_newsUrl) || _newsUrl.Get().Length == 0)
             {
                 ReportError("News URL not baked. Run PoolGenerator.");
-                return;
+                return false;
             }
             _isLoading = true;
             _pendingUrl = _newsUrl;
+            _pendingKind = "news";
             VRCStringDownloader.LoadUrl(_newsUrl, (IUdonEventReceiver)this);
+            return true;
         }
 
-        private void LoadInternal(VRCUrl[] pool, int page)
+        private bool LoadInternal(VRCUrl[] pool, int page, string kind)
         {
             if (_isLoading)
             {
                 ReportError("Listing already loading");
-                return;
+                return false;
             }
             if (pool == null || pool.Length == 0)
             {
                 ReportError("Listing pool not generated. Run PoolGenerator.");
-                return;
+                return false;
             }
             if (page < 0 || page >= pool.Length)
             {
                 ReportError("Page out of range");
-                return;
+                return false;
             }
             VRCUrl url = pool[page];
             if (!Utilities.IsValid(url) || url.Get().Length == 0)
             {
                 ReportError("Listing pool entry invalid");
-                return;
+                return false;
             }
 
             _isLoading = true;
             _pendingUrl = url;
+            _pendingKind = kind;
             VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this);
+            return true;
         }
 
         public override void OnStringLoadSuccess(IVRCStringDownload result)
         {
             if (!Utilities.IsValid(_pendingUrl) || result.Url.Get() != _pendingUrl.Get()) return;
             _isLoading = false;
-            if (_controller != null) _controller.OnListingResultReceived(result.Result);
+            string kind = _pendingKind;
+            _pendingKind = "";
+            if (_controller != null) _controller.OnListingResultReceived(result.Result, kind);
         }
 
         public override void OnStringLoadError(IVRCStringDownload result)
         {
             if (!Utilities.IsValid(_pendingUrl) || result.Url.Get() != _pendingUrl.Get()) return;
             _isLoading = false;
+            _pendingKind = "";
             ReportError("Listing API error: " + result.Error);
         }
 

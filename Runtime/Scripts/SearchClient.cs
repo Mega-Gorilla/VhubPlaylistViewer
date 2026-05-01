@@ -28,42 +28,48 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private bool _isLoading;
         private VRCUrl _pendingUrl;
 
-        public void SubmitSearch()
+        /// <summary>
+        /// 受理: true、busy / input 不正で reject: false。呼び出し元 (Controller) は
+        /// **true 受理後にのみ** `_currentTab` / state を更新する (PR #35 review)。
+        /// </summary>
+        public bool SubmitSearch()
         {
             if (_isLoading)
             {
                 ReportError("Search already in progress");
-                return;
+                return false;
             }
             if (_searchInputField == null)
             {
                 ReportError("Search input field not assigned");
-                return;
+                return false;
             }
 
             VRCUrl url = _searchInputField.GetUrl();
             if (!Utilities.IsValid(url))
             {
                 ReportError("Search URL is invalid");
-                return;
+                return false;
             }
             string raw = url.Get();
             if (raw.Length <= _expectedUrlPrefix.Length || !raw.StartsWith(_expectedUrlPrefix))
             {
                 ReportError("Search URL prefix mismatch — query empty or tampered");
-                return;
+                return false;
             }
 
             _isLoading = true;
             _pendingUrl = url;
             VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this);
+            return true;
         }
 
         public override void OnStringLoadSuccess(IVRCStringDownload result)
         {
             if (!Utilities.IsValid(_pendingUrl) || result.Url.Get() != _pendingUrl.Get()) return;
             _isLoading = false;
-            if (_controller != null) _controller.OnListingResultReceived(result.Result);
+            // SearchClient は search 専用、kind は固定 (PR #35 review、kind tagging で stale 判定)
+            if (_controller != null) _controller.OnListingResultReceived(result.Result, "search");
         }
 
         public override void OnStringLoadError(IVRCStringDownload result)
