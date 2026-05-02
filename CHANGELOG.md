@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 ## [Unreleased]
+
+## [0.1.0] - 2026-05-02
+
+**初の VPM listing 公開 release** (alpha)。Phase A 系列 (#23、#32〜#41、計 8 PR) で完成した PlaylistViewer 一式を `Mega-Gorilla/vpm-repos` 経由で VCC からインストール可能にする。Apache License 2.0、`Runtime/Prefabs/PlaylistViewer.prefab` 同梱、testing-chamber で動作確認済。
 
 ### Added
 - **完成版 README (#14)** — `README.md` を全面書き直し、VCC 未経験者向け install 手順 + KawaPlayer 連携 workflow + screenshot を含む。実装済機能 (Phase A 系 7 PR + #38 Search 廃止 + #12 prefab + #15 Apache 2.0) の最新状態を反映:
