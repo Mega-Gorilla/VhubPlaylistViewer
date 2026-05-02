@@ -40,7 +40,7 @@ KawaPlayer_PlaylistViewer/                    ← repo root = package root
 │   │   ├── UI_LoadingSpinner.png                 128×128 circle-notch、UISpinner で回転
 │   │   └── UI_ThumbPlaceholder.png               256×256 dark navy + music icon α=0.4
 │   ├── Prefabs/
-│   │   └── PlaylistViewer.prefab                 (issue #12, Unity Editor 必須)
+│   │   └── PlaylistViewer.prefab                 (#12 で testing-chamber から export、PR #38 までの全機能を内包、end-user は drag 1 つで導入可)
 │   ├── Animations/
 │   │   ├── PlaylistViewer.controller             (issue #13)
 │   │   ├── ShowSearch.anim
@@ -87,7 +87,7 @@ prefab 内の子 GameObject 名で、用途を区別する:
 | `#OwnerName` (詳細ビュー) | `#Owner` (検索結果カード) |
 | `#TotalTracks` (詳細ビュー、playlist 総トラック数) | `#TrackCount` (検索結果カード、playlist の trackCount) |
 
-**主要な `#`-prefix 要素一覧** (実装の `Start()` でバインド or per-row 描画時に参照、Phase A-3 後の canonical 構造)。詳細な rect サイズ / anchor / pivot / 配線手順は §13.6 参照:
+**主要な `#`-prefix 要素一覧** (実装の `Start()` でバインド or per-row 描画時に参照、Phase A-3 後の canonical 構造)。**本構造は #12 で `Runtime/Prefabs/PlaylistViewer.prefab` として export 済**、end-user は VPM install 後に prefab を drag するだけで導入可能。詳細な rect サイズ / anchor / pivot / 配線手順は §13.6 参照:
 
 ```
 PlaylistViewer (Controller / ListingClient / PlaylistResolver / ThumbnailLoader) — Search 機能は #38 で廃止
@@ -638,9 +638,16 @@ Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
 - **検索の発火** (#38 で完全廃止): 旧 `#TabSearch` button は Phase A-3 で削除 (Enter-to-search 化)、その後 `#SearchInputField` (VRCUrlInputField) も **#38 で撤去**。VRChat Udon API 制約により in-VRChat free-form search の UX 改善が不能と判断、Web ブラウザ誘導 UI (`#WebSearchHintLabel` + `#WebSearchUrlField`) に置換 (詳細 §4.2)。Popular / Recent / News の browse 体験は維持
 - `#DetailHeader` の section title (`プレイリスト詳細`) は **静的テキスト** で localization は別途検討 (V1 は日本語固定)
 
-#### 再構築用 scene 配線手順 (prefab 化 #12 で必要)
+#### 再構築用 scene 配線手順 (#12 prefab 化で実施済、本セクションはゼロから再構築する場合の参考)
 
-testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/PlaylistViewer.prefab` を export する際の参考:
+**標準ユーザー向けの導入は不要** — `Runtime/Prefabs/PlaylistViewer.prefab` (#12 で export 済) を drag するだけで PR #38 までの全機能を含む完成品が手に入る。
+
+本セクションは以下のケースで参照:
+- prefab を破棄してゼロから再構築したい (例: テーマ色や layout を大幅 customize)
+- prefab が import 不可の状況で手動で hierarchy を組み立てる必要がある
+- 後続の PR で hierarchy を変更する際の reference として
+
+testing-chamber で動作確認済の手順:
 
 1. **Tab Image** (`#TabPopular/Recent`): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = None` (色は controller が制御)。HLG 内では sizeDelta 0、anchor (0,0)-(1,1)。Button.onClick → `Controller` UdonBehaviour `SendCustomEvent` mode=String、strArg=`OnTabPopular` / `OnTabRecent`
 2. **ResultRow `#SelectButton`** (20 行): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = ColorTint` (ResultRow.Start が Button.colors を上書き)

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`Runtime/Prefabs/PlaylistViewer.prefab` (#12)** — testing-chamber で動作確認済の PlaylistViewer hierarchy を VPM パッケージ内 prefab として export。end user は drag 1 つで PR #38 までの全機能 (Popular/Recent browse + DetailView + Web 検索誘導 footer + Loading/Error overlay) を install できる。
+  - **Portability 対応**: testing-chamber 固有の foreign asset references (280 件) を package-local / TMP standard / Unity built-in に統一:
+    - 全 TMP_Text font / material を `LiberationSans SDF` (TMP package built-in) に変更 (91 components)。`MPLUSRounded1c-Medium SDF` (testing-chamber 固有) からの統一、日本語表示は VRChat runtime fallback (§13.1) で build 時に自動解決される
+    - `ThumbnailLoader._dummyTexture` + 全 `ResultRow._placeholderThumbnail` (20 件) を package 内 `Runtime/Sprites/UI_ThumbPlaceholder.png` に置換 (旧 `Assets/Textures/PlaceholderThumbnail.png` から)
+    - 残存 foreign refs の MPLUS fallback `TMP_SubMeshUI` (1 件、過去レンダリングの leftover) を削除、`ForceMeshUpdate` で再生成
+  - **install 後の必須作業** (README #14 で案内予定):
+    - (a) Allowed Domains に `playlist.vrc-hub.com` を追加 (Editor の `AllowedDomainsHelper` が誘導)
+    - (b) 自分の baseUrl で `Tools > VHub PlaylistViewer > Generate Pools` を再実行 (testing-chamber baseUrl で baked された pool が同梱されているため)
+    - (c) Canvas を所望位置に reposition (default は testing-chamber 室内座標 `(3.94, 1.86, -1.66)` rotation `(0°, 90°, 0°)` scale `(1.30, 1.30, 1.30)`)
+  - **Animator** (`PlaylistViewer.controller` + `ShowSearch.anim` + `ShowDetail.anim`) は #13 別 issue に移管。Controller GameObject に Animator component を attach せず、`PlaylistViewerController.Start()` の `_animator = GetComponent<Animator>()` は null 安全に動作。SetActive 切替で機能完結。
+
 ### Removed
 - **In-VRChat free-form search functionality (#38)** — `SearchClient` UdonBehaviour と関連 UI を完全削除し、Web ブラウザ誘導 UI に置換。削除対象: `Runtime/Scripts/SearchClient.cs` + `.asset` (UdonProgramAsset)、`PlaylistViewerController` の `_searchClient` SerializeField / `RequestSearch()` / `OnTabSearch()` / `LoadPage` の `search` 分岐、`PoolGenerator.GenerateAll` の `SearchClient` parameter + section 6 (search prefix sync block 〜50 行)、`PoolGeneratorWindow` の `_searchClient` field + ObjectField + HelpBox、scene 内の `PlaylistViewer/SearchClient` GameObject、`#SearchView/#SearchBar/#SearchInputField` (VRCUrlInputField)、`#SearchView/#SearchBar/#SearchIcon`。Rationale: PR #32〜#37 で 5 PR + 多 commit かけて prefix mismatch / scene preset 不整合 / TextComponent 同期欠落 / CopyProxyToUdon 欠落 / formula 符号誤り など多数の bug を順次対応したが、VRChat Udon API の根本制約 (VRCUrl runtime 構築不可、VRCUrlInputField.text setter 非公開、VRCUrlInputField の TMP_InputField 非継承による child TextComponent との二重管理、TMP_InputField.ActivateInputField() も Udon 非露出) により in-VRChat free-form search の UX 改善が不能と判断。Server 側の trending search terms / 短縮ドメイン提案も検討したが、server 工数大かつ UX 抜本改善には至らないため、client 側のみで完結する Web 誘導方式を採用。Popular / Recent / News (将来再有効化) の browse 体験は無変更で維持。
 
