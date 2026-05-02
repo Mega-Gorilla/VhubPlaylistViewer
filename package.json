@@ -8,6 +8,7 @@
     "name": "Mega-Gorilla",
     "url": "https://github.com/Mega-Gorilla/KawaPlayer_PlaylistViewer"
   },
+  "license": "Apache-2.0",
   "vpmDependencies": {
     "com.vrchat.worlds": ">=3.8.1"
   }

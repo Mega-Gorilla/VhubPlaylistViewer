@@ -1,0 +1,28 @@
+VHub PlaylistViewer (com.vhub.kawaplayer-playlistviewer)
+Copyright 2026 Mega-Gorilla
+
+This product includes software developed by Mega-Gorilla
+(https://github.com/Mega-Gorilla/VhubPlaylistViewer).
+
+================================================================================
+Third-Party Notices
+================================================================================
+
+This product includes icons derived from Phosphor Icons.
+
+  Phosphor Icons
+  Copyright (c) 2023 Phosphor Icons
+  Licensed under the MIT License.
+  Source: https://github.com/phosphor-icons/core
+
+  Files derived (in Runtime/Sprites/, rasterized from Phosphor's bold-weight
+  SVG sources via resvg-py 4x supersampling):
+    - UI_IconBack.png        (from arrow-left-bold)
+    - UI_IconSearch.png      (from magnifying-glass-bold)
+    - UI_IconRefresh.png     (from arrow-clockwise-bold)
+    - UI_IconMusic.png       (from music-notes-bold)
+    - UI_IconError.png       (from warning-bold)
+    - UI_LoadingSpinner.png  (from circle-notch-bold)
+    - UI_ThumbPlaceholder.png (composite of UI_IconMusic on a dark navy background)
+
+For the full text of all third-party licenses, see THIRD_PARTY_NOTICES.md.
