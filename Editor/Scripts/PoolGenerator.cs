@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Reflection;
+using UdonSharp;
+using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Components;
@@ -212,6 +214,15 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             }
             field.SetValue(target, value);
             EditorUtility.SetDirty(target);
+
+            // Proxy 上の SerializeField 書き込みを **背後の UdonBehaviour にも sync** する。
+            // これがないと runtime (Play Mode / VR build) では UdonBehaviour の publicVariables が
+            // 古い値のままで、proxy 経由でセットした VRCUrl[] や string が反映されない (docs §13.6 参照)。
+            // 既存 5 pool 代入 + 本 PR で追加した SearchClient prefix 代入の全てが影響を受ける (#37 review)。
+            if (target is UdonSharpBehaviour usb)
+            {
+                UdonSharpEditorUtility.CopyProxyToUdon(usb);
+            }
         }
 
         // ---------- バッチ生成 ----------
