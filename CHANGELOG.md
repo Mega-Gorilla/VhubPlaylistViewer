@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **License finalization (#15)** — package を **Apache License 2.0** で release 確定:
+  - `LICENSE.md` 配置 (Apache 2.0 全文 + Copyright 2026 Mega-Gorilla)
+  - `NOTICE` 配置 (Apache 2.0 §4(d) 準拠の attribution chain、Phosphor Icons MIT 由来 sprites の derivation を明記)
+  - `THIRD_PARTY_NOTICES.md` 配置 (Phosphor Icons MIT / UdonSharp MIT / Newtonsoft.Json MIT / VRChat Worlds SDK EULA の全文 / 出典 / 利用範囲 を整理)
+  - `package.json` に `"license": "Apache-2.0"` field 追加 (SPDX identifier、VPM listing #17 / GitHub UI で license バッジ表示用)
+  - 同梱フォントなし (#38 で `LiberationSans SDF` (TMP 標準) に統一済) のため SIL OFL 表記は不要
+  - 監査済の対象: Phosphor Icons (sprites 7 件、MIT、bundled、`NOTICE` 必須)、UdonSharp (MIT、unbundled、courtesy attribution)、Newtonsoft.Json (MIT、unbundled、Editor-only、courtesy)、VRChat SDK (EULA、unbundled、本 license 影響なし)
+  - 再配布者向け運用: Apache 2.0 §4(d) により本 package を改変・再配布する場合、`NOTICE` ファイルの内容を verbatim で含める必要あり
 - **`Runtime/Prefabs/PlaylistViewer.prefab` (#12)** — testing-chamber で動作確認済の PlaylistViewer hierarchy を VPM パッケージ内 prefab として export。end user は drag 1 つで PR #38 までの全機能 (Popular/Recent browse + DetailView + Web 検索誘導 footer + Loading/Error overlay) を install できる。
   - **Portability 対応**: testing-chamber 固有の foreign asset references (280 件) を package-local / TMP standard / Unity built-in に統一:
     - 全 TMP_Text font / material を `LiberationSans SDF` (TMP package built-in) に変更 (91 components)。`MPLUSRounded1c-Medium SDF` (testing-chamber 固有) からの統一、日本語表示は VRChat runtime fallback (§13.1) で build 時に自動解決される
