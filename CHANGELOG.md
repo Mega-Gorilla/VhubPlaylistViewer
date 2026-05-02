@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - **Web search 誘導 UI (#38)** — `#SearchView/#SearchBar` 内に 2 children を新規配置:
   - `#WebSearchHintLabel` (TMP_Text、非インタラクティブ): `"プレイリスト検索は web で実施できます (↓ URL タップでコピー)"` を案内表示。font は scene 統一 (LiberationSans SDF + VRChat runtime 日本語 fallback)、color=white α=0.7、`raycastTarget=false`。
   - `#WebSearchUrlField` (TMP_InputField readOnly、**NOT VRCUrlInputField**): `text="https://playlist.vrc-hub.com/"` (Editor preset、Controller.Start で `_baseUrl + "/"` を runtime 上書き)、`readOnly=true`、`interactable=true`。User タップで VRChat キーボード起動 → URL がプリセット表示 → Copy 可。DetailView `#UrlField` と同一 template (Instantiate 複製で生成)。
-  - `#SearchBar` を 720×64 → 720×120 にリサイズ (anchoredPos.y=380 維持) して 2 children を縦 2 段で配置。
+  - `#SearchBar` を 720×64 → 720×120 にリサイズ + **footer 化** (anchoredPos.y を 380 → -436、canvas 下端から 16px 上に配置)。旧 top 配置 (y=380) は #Header 下端 (y=416) と 24px overlap していたため user 指摘で footer に移動。SearchView Scroll View も連動して縮小 (720×780 anchoredPos.y=-114 → 720×636 anchoredPos.y=-42、SearchBar top の 16px 上で停止)。track 同時表示数は ~10→~8 に微減するが、bottom 配置で UX 直感性が向上 + Header overlap 解消。
   - `PlaylistViewerController` に `_webSearchUrlField: TMP_InputField` 追加 (BindHierarchy が `#WebSearchUrlField` を name 一致で auto-bind、Inspector 配線不要)、`Start()` で `_webSearchUrlField.text = _baseUrl + "/"` を runtime sync。
 - Initial repository scaffold (.gitignore, README)
 - Server API design draft (`docs/server-api-spec.md`)
