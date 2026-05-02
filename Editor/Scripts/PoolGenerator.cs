@@ -272,8 +272,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
 
             // #38: Search prefix sync (旧 section 6) を撤去。
             // SearchClient と in-VRChat free-form search は Web 誘導 UI に置換 (#SearchView/#SearchBar
-            // 内の `#WebSearchHintButton` + `#WebSearchUrlField`)。Web URL は Controller.Start で
-            // `_baseUrl + "/"` を runtime sync するため、PoolGenerator-bake 不要。
+            // 内の `#WebSearchHintLabel` 案内 TMP_Text + `#WebSearchUrlField` readOnly TMP_InputField)。
+            // Web URL は Controller.Start で `_baseUrl + "/"` を runtime sync するため、PoolGenerator-bake 不要。
 
             AssetDatabase.SaveAssets();
 

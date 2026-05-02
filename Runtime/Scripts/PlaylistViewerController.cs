@@ -14,7 +14,9 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
     /// **Search 機能は #38 で廃止** — VRChat Udon API 制約 (VRCUrl runtime 構築不可、
     /// VRCUrlInputField.text setter 非公開、TextComponent と m_Text の二重管理) により
     /// in-VRChat free-form search の UX 改善が不能と判断、Web ブラウザ誘導 UI に置換。
-    /// `#SearchBar` 内に Web URL コピー導線 (`#WebSearchHintButton` + `#WebSearchUrlField`) を配置。
+    /// `#SearchBar` 内に Web URL コピー導線 (`#WebSearchHintLabel` 案内 TMP_Text +
+    /// `#WebSearchUrlField` readOnly TMP_InputField) を配置、user は URL field を直接
+    /// タップして VRChat キーボード起動 → URL コピー。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class PlaylistViewerController : UdonSharpBehaviour
@@ -374,7 +376,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         }
 
         // #38: RequestSearch() removed — SearchClient と一体撤去。`#SearchBar` 内の
-        // `#WebSearchHintButton` が `OnWebSearchHintClick()` 経由で URL field を focus するだけ。
+        // `#WebSearchUrlField` (TMP_InputField readOnly) を user が直接タップして VRChat
+        // キーボード起動 → URL コピー。`#WebSearchHintLabel` は非インタラクティブ TMP_Text。
+        // (当初案の `#WebSearchHintButton` + `OnWebSearchHintClick()` 経由 focus は
+        // `TMP_InputField.ActivateInputField()` Udon 非露出のため不採用、L321-328 参照)
 
         /// <summary>
         /// News tab (#TabNews) クリックで発火。/api/vrc/news?p=0 を fetch (V1 single page、vhub-playlist#97)。
