@@ -5,6 +5,7 @@ using System.Net;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Components;
 using VRC.SDKBase;
 
 namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
@@ -220,6 +221,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             ListingClient listingClient,
             PlaylistResolver resolver,
             ThumbnailLoader thumbnailLoader,
+            SearchClient searchClient,
             GenerateOptions opts)
         {
             Result r = new Result();
@@ -259,6 +261,42 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             VRCUrl newsUrl = new VRCUrl(baseUrl + "/api/vrc/news?p=0");
             AssignPrivateField(listingClient, "_newsUrl", newsUrl);
 
+            // 6. Search prefix sync (#23 polish、user-reported VR test bug):
+            //    SearchClient の `_expectedUrlPrefix` (string) と、バインドされた VRCUrlInputField の
+            //    Inspector backing `m_Text` を baseUrl から同じ値で同期する。
+            //    runtime からは VRCUrlInputField.text setter は Udon 非公開 (docs §12 #4) のため、
+            //    scene 配置時の preset を Editor-time に確実に正しい値にしておくのが唯一の解。
+            string searchPrefixSyncMessage = "search prefix sync skipped (SearchClient unassigned)";
+            if (searchClient != null)
+            {
+                string searchPrefix = baseUrl + "/api/vrc/playlists/search?q=";
+                AssignPrivateField(searchClient, "_expectedUrlPrefix", searchPrefix);
+
+                SerializedObject sc = new SerializedObject(searchClient);
+                SerializedProperty inputProp = sc.FindProperty("_searchInputField");
+                VRCUrlInputField inputField = inputProp != null ? inputProp.objectReferenceValue as VRCUrlInputField : null;
+                if (inputField != null)
+                {
+                    SerializedObject ifo = new SerializedObject(inputField);
+                    SerializedProperty textProp = ifo.FindProperty("m_Text");
+                    if (textProp != null)
+                    {
+                        textProp.stringValue = searchPrefix;
+                        ifo.ApplyModifiedProperties();
+                        EditorUtility.SetDirty(inputField);
+                        searchPrefixSyncMessage = "search prefix synced (Inspector m_Text + _expectedUrlPrefix)";
+                    }
+                    else
+                    {
+                        searchPrefixSyncMessage = "search prefix: _expectedUrlPrefix synced, but m_Text not found on VRCUrlInputField";
+                    }
+                }
+                else
+                {
+                    searchPrefixSyncMessage = "search prefix: _expectedUrlPrefix synced, but _searchInputField is unassigned";
+                }
+            }
+
             AssetDatabase.SaveAssets();
 
             r.Ok = true;
@@ -266,7 +304,8 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                 ", yt-thumb-direct=" + ytThumbUrls.Length + " (fetched from server)" +
                 ", popular pages=" + opts.ListingPageCount +
                 ", recent pages=" + opts.ListingPageCount +
-                ", news=1 (single page, vhub-playlist#97)";
+                ", news=1 (single page, vhub-playlist#97)" +
+                ", " + searchPrefixSyncMessage;
             return r;
         }
     }
