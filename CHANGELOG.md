@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
   - **install 後の必須作業** (README #14 で案内予定):
     - (a) Allowed Domains に `playlist.vrc-hub.com` を追加 (Editor の `AllowedDomainsHelper` が誘導)
     - (b) 自分の baseUrl で `Tools > VHub PlaylistViewer > Generate Pools` を再実行 (testing-chamber baseUrl で baked された pool が同梱されているため)
-    - (c) Canvas を所望位置に reposition (default は testing-chamber 室内座標 `(3.94, 1.86, -1.66)` rotation `(0°, 90°, 0°)` scale `(1.30, 1.30, 1.30)`)
+    - (c) Canvas を所望位置に reposition + scale 調整 (**配布 prefab の root transform は neutral**: `position=(0, 0, 0)` / `rotation=(0°, 0°, 0°)` / `scale=(1, 1, 1)`、commit `9f97f9a` で reviewer 指摘により正規化済)。なお testing-chamber sample scene 内の instance は override で `position=(3.94, 1.86, -1.66)` / `rotation=(0°, 90°, 0°)` / `scale=(1.30, 1.30, 1.30)` を保持しており、参考配置として README に記載予定 (#14)
   - **Animator** (`PlaylistViewer.controller` + `ShowSearch.anim` + `ShowDetail.anim`) は #13 別 issue に移管。Controller GameObject に Animator component を attach せず、`PlaylistViewerController.Start()` の `_animator = GetComponent<Animator>()` は null 安全に動作。SetActive 切替で機能完結。
 
 ### Removed
