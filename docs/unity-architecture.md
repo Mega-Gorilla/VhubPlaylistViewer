@@ -590,7 +590,7 @@ UI 全体の配色を 1 箇所 (`PlaylistViewerController` の Inspector) で管
 | `UI_LoadingSpinner` | `circle-notch-bold` | 128×128 | — | `#LoadingOverlay` 中央、`UISpinner` で Z 軸回転 |
 | `UI_ThumbPlaceholder` | navy + music α=0.4 合成 | 256×256 | — | `#Thumbnail` placeholder fallback |
 
-Phosphor Icons は **MIT** ライセンス。本リポジトリ license 確定後 (#15) `THIRD_PARTY_NOTICES.md` で attribution 予定。
+Phosphor Icons は **MIT** ライセンス (#15 完了済、本リポジトリは Apache 2.0)。attribution は `NOTICE` (Apache §4(d) 準拠、再配布チェーンで verbatim 必須) と `THIRD_PARTY_NOTICES.md` (full MIT 全文 + 派生ファイル列挙) に記載済。
 
 #### Canvas hierarchy / レイアウト (Phase A-3 reorganized、768×1024 portrait)
 

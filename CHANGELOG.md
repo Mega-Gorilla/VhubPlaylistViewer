@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 - **License finalization (#15)** — package を **Apache License 2.0** で release 確定:
   - `LICENSE.md` 配置 (Apache 2.0 全文 + Copyright 2026 Mega-Gorilla)
   - `NOTICE` 配置 (Apache 2.0 §4(d) 準拠の attribution chain、Phosphor Icons MIT 由来 sprites の derivation を明記)
-  - `THIRD_PARTY_NOTICES.md` 配置 (Phosphor Icons MIT / UdonSharp MIT / Newtonsoft.Json MIT / VRChat Worlds SDK EULA の全文 / 出典 / 利用範囲 を整理)
+  - `THIRD_PARTY_NOTICES.md` 配置: bundled MIT 系 3 件 (Phosphor Icons / UdonSharp / Newtonsoft.Json) は **MIT 全文 + 出典 + 利用範囲** を記載、VRChat Worlds SDK は proprietary EULA のため **リンク + 出典 + 利用範囲のみ** 記載 (EULA 全文は同梱せず、公式サイト参照を案内)
   - `package.json` に `"license": "Apache-2.0"` field 追加 (SPDX identifier、VPM listing #17 / GitHub UI で license バッジ表示用)
   - 同梱フォントなし (#38 で `LiberationSans SDF` (TMP 標準) に統一済) のため SIL OFL 表記は不要
   - 監査済の対象: Phosphor Icons (sprites 7 件、MIT、bundled、`NOTICE` 必須)、UdonSharp (MIT、unbundled、courtesy attribution)、Newtonsoft.Json (MIT、unbundled、Editor-only、courtesy)、VRChat SDK (EULA、unbundled、本 license 影響なし)
