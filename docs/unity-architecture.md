@@ -603,7 +603,7 @@ Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
 │   ├── #PlaylistName          (anchoredPos y=-219, size auto×70)
 │   ├── #OwnerName             (anchoredPos y=-274, size auto×30)
 │   ├── #TotalTracks           (anchoredPos y=-274, size auto×30)
-│   ├── Scroll View            (stretch, anchoredPos y=-168, sizeDelta -40,-512) — polish PR で縦拡張 (高さ 512、bottom y=-424、UrlField 上端 +16px 上)
+│   ├── Scroll View            (stretch, anchoredPos y=-101.5, sizeDelta -40,-645) — polish PR で縦拡張 (高さ 379、bottom y=-291、UrlField 上端 -307 の +16px 上)
 │   └── #UrlLabel / #UrlField  (bottom-anchored、既存維持)
 ├── #LoadingOverlay            (stretch fills canvas)
 │   ├── BG: Image (overlay tint via _overlayPanels[])
@@ -639,7 +639,7 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
    - `#PlaylistName`: anchor (0,1)-(1,1) pivot (0,1) anchoredPos (256,-188) sizeDelta (-280, 70) — 200 thumb + 24 gap = 224 左 padding + 32 右 padding
    - `#OwnerName`: anchor (0,1)-(0.5,1) pivot (0,1) anchoredPos (256,-266) sizeDelta (0, 30)
    - `#TotalTracks`: anchor (0.5,1)-(1,1) pivot (1,1) anchoredPos (-32,-266) sizeDelta (0, 30)
-10. **DetailView `Scroll View`** resize: anchoredPos (0,-168) sizeDelta (-40,-512) (高さ 512、top y=+88 維持、bottom y=-424、`#UrlField` 上端の +16px 上)。**polish PR で縦拡張** (旧値: anchoredPos (0,-85.5) sizeDelta (-40,-677)、高さ 347): SearchView Scroll View (高さ 780) との余裕を生かし、bottom を `#UrlField` 上端の +16px 上まで延長 (track 同時表示数 ~5→~7)。scene-specific な UrlField 位置に応じて `(UrlField_top_canvas_y - 16 - 88) - 1024 = sizeDelta.y` で逆算可。Image color は polish PR 以降 **surface tint α=0.08** とし、詳細は step 17 参照 (旧 PR #34 では α=0 透過だったが polish PR で revert)
+10. **DetailView `Scroll View`** resize: anchoredPos (0,-101.5) sizeDelta (-40,-645) (高さ 379、top y=+88 維持、bottom y=-291、`#UrlField` 上端 (canvas y=-307) の +16px 上)。**polish PR で縦拡張** (旧値: anchoredPos (0,-85.5) sizeDelta (-40,-677)、高さ 347): bottom を `#UrlField` 上端の +16px 上まで延長 (track 同時表示数 ~5→~6)。**testing-chamber 実測**: `#UrlField` は anchor (0,0)-(1,0) pivot (0.5,0) anchoredPos (0,155) sizeDelta (-40,50) → top canvas y=-307。scene-specific な UrlField 位置に応じて `(UrlField_top_canvas_y - 16 - 88) - 1024 = sizeDelta.y` で逆算可 (canvas h=1024 前提)。Image color は polish PR 以降 **surface tint α=0.08** とし、詳細は step 17 参照 (旧 PR #34 では α=0 透過だったが polish PR で revert)
 11. **`#TrackTemplate` restyle (Phase A-4 + polish)**: 自身に Image component 追加 (**sprite=null** = sharp corner flat rect、color=(1,1,1,0.08) surface tint pre-bake、clone は色継承)。`SetActive(false)` 維持。`HorizontalLayoutGroup` + `ContentSizeFitter` (vertical=PreferredSize) を attach し **可変 cell サイズ** (1 行 / 2 行 wrap で title 量に応じて自動 height、polish PR で導入)。`#Position` に `LayoutElement` (preferredWidth=40)、`#Title` に `LayoutElement` (flexibleWidth=1) + TMP `wrap=true overflow=Overflow`。`#TrackListContent` に `VerticalLayoutGroup` (spacing=4、childForceExpandWidth=true、childControlHeight=false) + `ContentSizeFitter` (vertical=PreferredSize) で track の縦間隔とコンテンツ height を自動管理 → `RenderTrackList` script は positioning/sizing 操作なし、clone + text 設定のみ
 12. **`#LoadingSpinner`** (新規 GameObject、`#LoadingOverlay` の child): RectTransform anchor (0.5, 0.5)、size 96×96、Image sprite=`UI_LoadingSpinner` color=white、UISpinner UdonBehaviour
 13. **`#ErrorIcon`** (新規 GameObject、`#ErrorOverlay` の child): RectTransform anchor (0.5, 0.5) anchoredPosition (0, 80)、size 96×96、Image sprite=`UI_IconError` color=`#E55353`
