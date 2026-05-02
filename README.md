@@ -22,9 +22,11 @@ free-form 検索は **Web ブラウザに誘導** (`https://playlist.vrc-hub.com
 
 ## スクリーンショット
 
-| SearchView (4 段レイアウト) | DetailView (cover + tracks) |
+| SearchView レイアウト (placeholder rows) | DetailView レイアウト (playlist 未選択時の placeholder state) |
 |---|---|
 | ![SearchView](docs/images/searchview.png) | ![DetailView](docs/images/detailview.png) |
+
+> **Note**: 上記 2 枚はいずれも **placeholder 状態** (実 server fetch 前の Pre-allocated rows / playlist 未選択時の DetailView template)。実データ load 後は ResultRow に実 playlist 名 + 所有者 + cover thumbnail が、DetailView に選択 playlist の cover art + tracks 一覧 + URL が表示されます。実データ入りの screenshot 差し替えは follow-up 予定。
 
 ワールド設置例 (testing-chamber、室内ボード型 Canvas):
 
