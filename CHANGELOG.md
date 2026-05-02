@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **完成版 README (#14)** — `README.md` を全面書き直し、VCC 未経験者向け install 手順 + KawaPlayer 連携 workflow + screenshot を含む。実装済機能 (Phase A 系 7 PR + #38 Search 廃止 + #12 prefab + #15 Apache 2.0) の最新状態を反映:
+  - 新規 `docs/images/` 配下に screenshot 3 枚を追加 (`searchview.png` / `detailview.png` / `searchview_world.png`)
+  - 12 章構成 (概要 / 機能 / スクリーンショット / 動作環境 / インストール (VCC + 手動) / セットアップ 5 step (Allowed Domains 追加 / prefab drag / reposition / Pool 生成 / world upload) / 使い方 (in-VRChat workflow + Web 検索 workflow) / カスタマイズ (theme color / tab visibility / pool 再生成) / アーキテクチャ概要 (`docs/unity-architecture.md` cross-link) / Apache 2.0 license + §4(d) 派生再配布要件 + `NOTICE` / `THIRD_PARTY_NOTICES.md` 案内 / 関連プロジェクト / 開発状況)
+  - testing-chamber sample placement (`pos=(3.94, 1.86, -1.66) / rot=(0,90,0) / scale=1.30`) を「prefab default は neutral、testing-chamber は参考配置」と書き分け (PR #39 reviewer 指摘の延長)
 - **License finalization (#15)** — package を **Apache License 2.0** で release 確定:
   - `LICENSE.md` 配置 (Apache 2.0 全文 + Copyright 2026 Mega-Gorilla)
   - `NOTICE` 配置 (Apache 2.0 §4(d) 準拠の attribution chain、Phosphor Icons MIT 由来 sprites の derivation を明記)
