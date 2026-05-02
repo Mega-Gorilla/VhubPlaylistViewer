@@ -4,7 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+- **In-VRChat free-form search functionality (#38)** — `SearchClient` UdonBehaviour と関連 UI を完全削除し、Web ブラウザ誘導 UI に置換。削除対象: `Runtime/Scripts/SearchClient.cs` + `.asset` (UdonProgramAsset)、`PlaylistViewerController` の `_searchClient` SerializeField / `RequestSearch()` / `OnTabSearch()` / `LoadPage` の `search` 分岐、`PoolGenerator.GenerateAll` の `SearchClient` parameter + section 6 (search prefix sync block 〜50 行)、`PoolGeneratorWindow` の `_searchClient` field + ObjectField + HelpBox、scene 内の `PlaylistViewer/SearchClient` GameObject、`#SearchView/#SearchBar/#SearchInputField` (VRCUrlInputField)、`#SearchView/#SearchBar/#SearchIcon`。Rationale: PR #32〜#37 で 5 PR + 多 commit かけて prefix mismatch / scene preset 不整合 / TextComponent 同期欠落 / CopyProxyToUdon 欠落 / formula 符号誤り など多数の bug を順次対応したが、VRChat Udon API の根本制約 (VRCUrl runtime 構築不可、VRCUrlInputField.text setter 非公開、VRCUrlInputField の TMP_InputField 非継承による child TextComponent との二重管理、TMP_InputField.ActivateInputField() も Udon 非露出) により in-VRChat free-form search の UX 改善が不能と判断。Server 側の trending search terms / 短縮ドメイン提案も検討したが、server 工数大かつ UX 抜本改善には至らないため、client 側のみで完結する Web 誘導方式を採用。Popular / Recent / News (将来再有効化) の browse 体験は無変更で維持。
+
 ### Added
+- **Web search 誘導 UI (#38)** — `#SearchView/#SearchBar` 内に 2 children を新規配置:
+  - `#WebSearchHintLabel` (TMP_Text、非インタラクティブ): `"プレイリスト検索は web で実施できます (↓ URL タップでコピー)"` を案内表示。font は scene 統一 (LiberationSans SDF + VRChat runtime 日本語 fallback)、color=white α=0.7、`raycastTarget=false`。
+  - `#WebSearchUrlField` (TMP_InputField readOnly、**NOT VRCUrlInputField**): `text="https://playlist.vrc-hub.com/"` (Editor preset、Controller.Start で `_baseUrl + "/"` を runtime 上書き)、`readOnly=true`、`interactable=true`。User タップで VRChat キーボード起動 → URL がプリセット表示 → Copy 可。DetailView `#UrlField` と同一 template (Instantiate 複製で生成)。
+  - `#SearchBar` を 720×64 → 720×120 にリサイズ + **footer 化** (anchoredPos.y を 380 → -436、canvas 下端から 16px 上に配置)。旧 top 配置 (y=380) は #Header 下端 (y=416) と 24px overlap していたため user 指摘で footer に移動。
+  - **`#TabRow` を Header 直下に上方移動** (anchoredPos.y を 312 → 372、Header 下端から 16px gap)。旧位置 (y=312) は Header との間に 76px の無駄 space があったため user 指摘で詰めた。
+  - **SearchView Scroll View を 2 段階で再調整**: (a) footer SearchBar 挿入で 720×780 (anchoredPos.y=-114) → 720×636 (anchoredPos.y=-42) に縮小、(b) TabRow 上方移動で空いた space を使って 720×688 (anchoredPos.y=-16) に **上方拡張**。track 同時表示数: ~10 → 一時 ~8 → ~9 に回復。
+  - 結果として全 4 段 (`#Header` / `#TabRow` / Scroll View / `#SearchBar`) が **均一 16px gap** で並ぶ統一レイアウトに。
+  - `PlaylistViewerController` に `_webSearchUrlField: TMP_InputField` 追加 (BindHierarchy が `#WebSearchUrlField` を name 一致で auto-bind、Inspector 配線不要)、`Start()` で `_webSearchUrlField.text = _baseUrl + "/"` を runtime sync。
 - Initial repository scaffold (.gitignore, README)
 - Server API design draft (`docs/server-api-spec.md`)
 - Unity-side architecture document (`docs/unity-architecture.md`)

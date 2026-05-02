@@ -10,8 +10,13 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 {
     /// <summary>
     /// PlaylistViewer のメインコントローラー。状態機械、ビュー切替、子コンポーネント協調を担う。
-    /// 子コンポーネント (ListingClient / SearchClient / PlaylistResolver / ThumbnailLoader / Keypad3D)
-    /// は Inspector でアサインする。
+    /// 子コンポーネント (ListingClient / PlaylistResolver / ThumbnailLoader) は Inspector でアサイン。
+    /// **Search 機能は #38 で廃止** — VRChat Udon API 制約 (VRCUrl runtime 構築不可、
+    /// VRCUrlInputField.text setter 非公開、TextComponent と m_Text の二重管理) により
+    /// in-VRChat free-form search の UX 改善が不能と判断、Web ブラウザ誘導 UI に置換。
+    /// `#SearchBar` 内に Web URL コピー導線 (`#WebSearchHintLabel` 案内 TMP_Text +
+    /// `#WebSearchUrlField` readOnly TMP_InputField) を配置、user は URL field を直接
+    /// タップして VRChat キーボード起動 → URL コピー。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class PlaylistViewerController : UdonSharpBehaviour
@@ -29,7 +34,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
 
         [Header("Children (アサイン必須)")]
         [SerializeField] private ListingClient _listingClient;
-        [SerializeField] private SearchClient _searchClient;
         [SerializeField] private PlaylistResolver _resolver;
         [SerializeField] private ThumbnailLoader _thumbnailLoader;
 
@@ -113,13 +117,17 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         private TextMeshProUGUI _detailTotalTracks;
         private TMP_InputField _detailUrlField;
         private RawImage _detailPlaylistThumbnail; // Phase A-4: cover art (#PlaylistThumbnail)
+        // #38: Web search hint UI replaces SearchClient/free-form search.
+        // BindHierarchy が `#WebSearchUrlField` 名一致で auto-bind、Inspector 配線不要。
+        // Start で `_baseUrl + "/"` を text に設定 → user タップで VRChat キーボード起動 → Copy 可。
+        private TMP_InputField _webSearchUrlField;
         private Animator _animator;
 
         // ----- Runtime state -----
         private int _state;
         private int _currentPage;
-        private string _currentTab;       // "popular" / "recent" / "search"
-        private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search (legacy、tab UI 削除済) / 3=News、UpdateTabVisuals が読む
+        private string _currentTab;       // "popular" / "recent" / "news"
+        private int _activeTabIndex = -1; // 0=Popular / 1=Recent / 2=Search (#38 で機能廃止、index は legacy 互換) / 3=News、UpdateTabVisuals が読む
         private string _currentPlaylistId;
         private string _pendingOwnerName;     // SelectResult 時に listing item から carry over
         private int _pendingYtThumbIndex = -1; // 同上、Phase A-4 で DetailView の cover art に使用
@@ -135,6 +143,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             BindHierarchy();
             UpdateLanguageStrings();
             ApplyThemeOnStart();
+
+            // #38: Web search hint URL を baseUrl から runtime sync (PoolGenerator-bake 不要、
+            // staging/dev 切替時も _baseUrl Inspector 値の変更で追従)。TMP_InputField は通常
+            // Unity API なので .text setter は Udon 露出済 (制限は VRCUrlInputField 限定、§12 #4)。
+            if (_webSearchUrlField != null) _webSearchUrlField.text = _baseUrl + "/";
+
             SetState(STATE_IDLE);
 
             if (_autoLoadPopularOnStart)
@@ -221,6 +235,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
                     case "#TotalTracks": _detailTotalTracks = t.GetComponent<TextMeshProUGUI>(); break;
                     case "#UrlField": _detailUrlField = t.GetComponent<TMP_InputField>(); break;
                     case "#PlaylistThumbnail": _detailPlaylistThumbnail = t.GetComponent<RawImage>(); break;
+                    case "#WebSearchUrlField": _webSearchUrlField = t.GetComponent<TMP_InputField>(); break; // #38: Web search hint URL field
                 }
             }
         }
@@ -308,7 +323,12 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         public void OnTabPopular() { RequestPopular(0); }
         public void OnTabRecent() { RequestRecent(0); }
         public void OnTabNews() { RequestNews(); }
-        public void OnTabSearch() { RequestSearch(); }
+        // #38: Search 機能廃止 (in-VRChat free-form search → Web 誘導 UI)。OnTabSearch / RequestSearch
+        // は撤去。`#SearchBar` 内の `#WebSearchUrlField` (TMP_InputField readOnly) を user が直接
+        // タップ → VRChat キーボード起動 → URL コピー。`TMP_InputField.ActivateInputField()` は
+        // Udon 非露出のため Button 経由のプログラマティック focus は実装不能、UI 上は label で
+        // 「↓ URL field をタップしてコピー」と案内する構成。
+
         public void OnNextPage()
         {
             if (_state == STATE_SEARCH_VIEW || _state == STATE_IDLE)
@@ -355,16 +375,11 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
             SetState(STATE_LOADING);
         }
 
-        public void RequestSearch()
-        {
-            if (_searchClient == null) { ReportError("SearchClient not assigned"); return; }
-            if (!_searchClient.SubmitSearch()) return;
-            _currentTab = "search";
-            _activeTabIndex = 2;
-            UpdateTabVisuals();
-            _currentPage = 0;
-            SetState(STATE_LOADING);
-        }
+        // #38: RequestSearch() removed — SearchClient と一体撤去。`#SearchBar` 内の
+        // `#WebSearchUrlField` (TMP_InputField readOnly) を user が直接タップして VRChat
+        // キーボード起動 → URL コピー。`#WebSearchHintLabel` は非インタラクティブ TMP_Text。
+        // (当初案の `#WebSearchHintButton` + `OnWebSearchHintClick()` 経由 focus は
+        // `TMP_InputField.ActivateInputField()` Udon 非露出のため不採用、L321-328 参照)
 
         /// <summary>
         /// News tab (#TabNews) クリックで発火。/api/vrc/news?p=0 を fetch (V1 single page、vhub-playlist#97)。
@@ -385,17 +400,18 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
         {
             if (tab == "popular") RequestPopular(page);
             else if (tab == "recent") RequestRecent(page);
-            else if (tab == "search") { /* search のページングは別 issue で対応 */ }
+            // News のページング: 現状 V1 で server side guard により p=1 以降は 400 を返すため非対応
+            // (vhub-playlist#97 V1 spec)。Search タブは #38 で機能廃止のため分岐削除。
         }
 
         // ----- 子からのコールバック -----
 
         /// <summary>
-        /// ListingClient / SearchClient から呼ばれる。
-        /// `kind` は response を生んだ request の種別 ("popular" / "recent" / "search" / "news")。
+        /// ListingClient から呼ばれる。
+        /// `kind` は response を生んだ request の種別 ("popular" / "recent" / "news")。
         /// kind が現 `_currentTab` と一致しないなら **stale** (ユーザーが別タブに移動済) として discard。
-        /// PR #35 review fix: SearchClient と ListingClient は独立 `_isLoading` を持つため
-        /// 並行 in-flight 可能、kind tagging で render schema を request 時点に固定する。
+        /// PR #35 review fix: 並行 in-flight 可能性に備え kind tagging で render schema を
+        /// request 時点に固定する (#38 で SearchClient 撤去後も同 pattern を維持)。
         /// </summary>
         public void OnListingResultReceived(string json, string kind)
         {

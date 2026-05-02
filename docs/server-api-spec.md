@@ -141,6 +141,8 @@ HTTP ステータス: `200` 正常 / `400` 不正クエリ / `404` 該当なし 
 
 ### 4.3 `GET /api/vrc/playlists/search`
 
+> **Note**: KawaPlayer_PlaylistViewer (VRChat client) は **PR #38 で本エンドポイントの直接利用を廃止** した。VRChat Udon API 制約 (VRCUrl runtime 構築不可、VRCUrlInputField.text setter 非公開) により in-VRChat free-form search の UX 改善が不能と判断、Web 誘導 UI に切り替えた。本エンドポイント仕様は Web frontend からは引き続き利用される + 将来の他クライアント (例: PC native player) のために spec 文書として保持する。
+
 | 名前 | 必須 | 型 | デフォルト | 説明 |
 |---|---|---|---|---|
 | `q` | ○ | string | - | 検索キーワード (URL エンコード済)。**1 文字以上 64 字以下** |

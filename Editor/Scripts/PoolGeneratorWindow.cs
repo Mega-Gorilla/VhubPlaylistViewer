@@ -13,7 +13,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
         private ListingClient _listingClient;
         private PlaylistResolver _resolver;
         private ThumbnailLoader _thumbnailLoader;
-        private SearchClient _searchClient;
 
         private string _baseUrl = PoolGenerator.DEFAULT_BASE_URL;
         private string _resolvePoolId = PoolGenerator.POOL_ID_RESOLVE;
@@ -60,8 +59,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                     "  Playlist Resolver", _resolver, typeof(PlaylistResolver), true);
                 _thumbnailLoader = (ThumbnailLoader)EditorGUILayout.ObjectField(
                     "  Thumbnail Loader", _thumbnailLoader, typeof(ThumbnailLoader), true);
-                _searchClient = (SearchClient)EditorGUILayout.ObjectField(
-                    "  Search Client", _searchClient, typeof(SearchClient), true);
             }
 
             if (_controller == null)
@@ -72,10 +69,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             if (_listingClient == null || _resolver == null || _thumbnailLoader == null)
             {
                 EditorGUILayout.HelpBox("Controller の Children (ListingClient / PlaylistResolver / ThumbnailLoader) が未設定です。Inspector で割り当ててから再度開いてください。", MessageType.Warning);
-            }
-            if (_searchClient == null)
-            {
-                EditorGUILayout.HelpBox("Controller の SearchClient が未設定のため、search prefix の Inspector 自動同期 (#23 polish) はスキップされます。他 4 件の pool は生成されます。", MessageType.Warning);
             }
 
             EditorGUILayout.Space(12);
@@ -123,7 +116,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             _listingClient = null;
             _resolver = null;
             _thumbnailLoader = null;
-            _searchClient = null;
             if (_controller == null) return;
 
             // Inspector で SerializedProperty 経由で取得
@@ -131,7 +123,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             _listingClient = so.FindProperty("_listingClient")?.objectReferenceValue as ListingClient;
             _resolver = so.FindProperty("_resolver")?.objectReferenceValue as PlaylistResolver;
             _thumbnailLoader = so.FindProperty("_thumbnailLoader")?.objectReferenceValue as ThumbnailLoader;
-            _searchClient = so.FindProperty("_searchClient")?.objectReferenceValue as SearchClient;
+            // #38: SearchClient は廃止 (Search 機能を Web 誘導 UI に置換)
         }
 
         private void ValidateAll()
@@ -172,7 +164,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             try
             {
                 PoolGenerator.Result r = PoolGenerator.GenerateAll(
-                    _controller, _listingClient, _resolver, _thumbnailLoader, _searchClient, opts);
+                    _controller, _listingClient, _resolver, _thumbnailLoader, opts);
                 if (r.Ok)
                 {
                     _statusMessage = r.Message;

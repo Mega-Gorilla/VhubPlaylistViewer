@@ -27,9 +27,9 @@ KawaPlayer_PlaylistViewer/                    ← repo root = package root
 │   ├── Scripts/
 │   │   ├── PlaylistViewerController.cs           メイン状態機械 + テーマカラー source-of-truth (#23 §13.5)
 │   │   ├── ResultRow.cs                          結果カード 1 行、theme tint を controller から pull
-│   │   ├── ListingClient.cs                      popular/recent クライアント
-│   │   ├── SearchClient.cs                       search クライアント (VRCUrlInputField 経由)
+│   │   ├── ListingClient.cs                      popular/recent/news クライアント
 │   │   ├── PlaylistResolver.cs                   /r/... resolve クライアント
+│   │   │   (Search 機能 + SearchClient.cs は #38 で廃止 — Web 誘導 UI に置換、§4.2 / §13.6 step 4)
 │   │   ├── ThumbnailLoader.cs                    VRCImageDownloader プール (yt-thumb-direct, vhub-playlist#92)
 │   │   ├── UISpinner.cs                          Loading overlay 用 Z 軸回転コンポーネント (#23 Phase A)
 │   │   ├── Keypad3D.cs                           3D キーパッド (親)
@@ -90,19 +90,19 @@ prefab 内の子 GameObject 名で、用途を区別する:
 **主要な `#`-prefix 要素一覧** (実装の `Start()` でバインド or per-row 描画時に参照、Phase A-3 後の canonical 構造)。詳細な rect サイズ / anchor / pivot / 配線手順は §13.6 参照:
 
 ```
-PlaylistViewer (Controller / ListingClient / SearchClient / PlaylistResolver / ThumbnailLoader)
+PlaylistViewer (Controller / ListingClient / PlaylistResolver / ThumbnailLoader) — Search 機能は #38 で廃止
 └── Canvas (WorldSpace + BoxCollider + VRCUiShape, §13.2)
     ├── #Header                      (Canvas 直下、ビュー横断、§13.5/§13.6)
     │   └── #Title                   (TMP_Text "VHub PlaylistViewer")
     ├── #SearchView
-    │   ├── #SearchBar               (検索入力 row、§13.6)
-    │   │   ├── #SearchIcon          (Image, UI_IconSearch)
-    │   │   └── #SearchInputField    (VRCUrlInputField、OnEndEdit → SendCustomEvent("RequestSearch")、§4.2)
+    │   ├── #SearchBar               (Web 検索誘導 row、#38 で in-VRChat search 廃止、§13.6 step 4)
+    │   │   ├── #WebSearchHintLabel  (TMP_Text、非インタラクティブ、案内文 "プレイリスト検索は web で実施できます (↓ URL タップでコピー)")
+    │   │   └── #WebSearchUrlField   (TMP_InputField readOnly、text=`https://playlist.vrc-hub.com/`、user タップで VRChat キーボード起動 → Copy 可、§4.2)
     │   ├── #TabRow                  (HorizontalLayoutGroup、現在 2 タブ等幅 50% 配分)
     │   │   ├── #TabPopular          (Button、Button.onClick → OnTabPopular)
     │   │   ├── #TabRecent           (Button、Button.onClick → OnTabRecent)
     │   │   └── #TabNews             (**SetActive(false)、polish PR で hide**、Button.onClick → OnTabNews、vhub-playlist#97 V1 単一ページ)
-    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、News tab は polish PR でユーザー要望により非表示化 (code は維持、SetActive(true) で再有効化可)
+    │   │     ↑ 旧 #TabSearch は Phase A-3 で削除 (Enter-to-search 化)、News tab は polish PR でユーザー要望により非表示化 (code は維持、SetActive(true) で再有効化可)。Search 機能自体は #38 で廃止
     │   └── (ScrollRect: Viewport / Content) — Pre-allocated 20 行 (§5.3)
     │       ├── #ResultRow0          (ResultRow UdonBehaviour、_index=0)
     │       │   ├── #Thumbnail       (RawImage)
@@ -189,27 +189,42 @@ stateDiagram-v2
               thumbnailLoader.LoadYtThumbnail(ytThumbIndex, rawImage)
 ```
 
-### 4.2 search (検索)
+### 4.2 search (検索) — **#38 で機能廃止 → Web 誘導 UI に置換**
+
+In-VRChat free-form search は **PR #38 で完全廃止** した。`#SearchView/#SearchBar` には以下の Web 誘導 UI を配置:
 
 ```
-[ユーザーが #SearchInputField (VRCUrlInputField) をタップ]
-  → VRChat 内蔵キーボードが起動 (Copy/Paste も可)
-  → ユーザーがキーボードでクエリ部分を編集
-  → OK で確定すると _searchInputField.text に反映され、OnEndEdit 発火
-
-[OnEndEdit (Enter / VRChat キーボード閉じ) — UnityEvent persistent listener]
-  → Controller UdonBehaviour.SendCustomEvent("RequestSearch")
-    → controller.RequestSearch()
-      → searchClient.SubmitSearch()
-        → VRCUrl url = _searchInputField.GetUrl()  (VRChat の検証経由で VRCUrl 生成)
-        → VRCStringDownloader.LoadUrl(url, this)
-          → OnStringLoadSuccess(json)
-            → controller.OnListingResultReceived(json)
+#SearchBar (720×120、surface tint card)
+├── #WebSearchHintLabel (TMP_Text、非インタラクティブ)
+│   └── "プレイリスト検索は web で実施できます (↓ URL タップでコピー)"
+└── #WebSearchUrlField (TMP_InputField readOnly)
+    └── text: https://playlist.vrc-hub.com/  ← user タップで VRChat キーボード起動 → Copy 可
 ```
 
-(Phase A-3 で Search タブを廃止し、上記 Enter-to-search 方式に統一。詳細は §13.6)
+ユーザーフロー: World 入室 → SearchView 既定表示 → web hint で誘導された URL を VRChat キーボード経由で Copy → ブラウザで `playlist.vrc-hub.com` を開いて検索 → 見つけた playlist の URL を Copy → KawaPlayer や本 world の DetailView (Popular / Recent タブから browse して目的 playlist を選択) で利用。
 
-注: 当初は 3D キーパッドからの直接入力を検討していたが、Unity 実機検証で **`VRCUrlInputField.text` setter が Udon 非公開** であることが判明。3D キーパッドからの書き込み経路は塞がれているため、v1 は VRChat 内蔵キーボード方式に統一する。詳細は §6 を参照。
+#### 廃止理由 (PR #32〜#37 の累積試行から)
+
+| 制約 | 影響 |
+|---|---|
+| **VRCUrl runtime 構築不可** | ユーザー入力欄に **フル URL (prefix + query)** が常時必要 |
+| **VRCUrlInputField.text setter は Udon 非公開** (§12 #4) | ユーザーが prefix を消した場合の自動復元不能、`SubmitSearch` の actionable error も dead end |
+| **VRCUrlInputField は TMP_InputField 非継承** | m_Text と child TextComponent の二重管理が必須、Play Mode で TextComponent から m_Text が上書きされる UX 不整合 |
+
+5 PR + 多 commit の修正後も「長い URL prefix を VRChat キーボードで編集して末尾にカーソル移動して query 追加」という UX が改善不能と判断、Web 誘導に方針転換した。Popular / Recent / News (将来再有効化) で browse 体験は維持されるため、機能損失は限定的。
+
+#### 旧 SearchClient 関連 code の所在
+
+廃止により以下が削除:
+- `Runtime/Scripts/SearchClient.cs` + `.asset` (UdonProgramAsset)
+- Controller の `_searchClient` SerializeField / `RequestSearch` / `OnTabSearch` / `LoadPage` の search 分岐
+- PoolGenerator の `SearchClient` parameter + section 6 (search prefix sync block)
+- PoolGeneratorWindow の `_searchClient` field + ObjectField + HelpBox
+- scene の `SearchClient` GameObject + `#SearchInputField` + `#SearchIcon`
+
+git history から復元可能 (PR #38 以前の commit に存在)。
+
+注: 当初は 3D キーパッドからの直接入力を検討していたが、Unity 実機検証で **`VRCUrlInputField.text` setter が Udon 非公開** であることが判明。3D キーパッドからの書き込み経路は塞がれているため、v1 は VRChat 内蔵キーボード方式に統一していたが、その UX 自体も #38 で廃止に至った。詳細は §6 を参照。
 
 ### 4.3 detail 表示 (resolve)
 
@@ -282,8 +297,8 @@ KawaPlayer の `PlaylistLoaderEditor.cs` の Reflection パターンを踏襲す
 | クラス | 責任 | 主な依存 |
 |---|---|---|
 | `PlaylistViewerController` | 状態機械、UI バインド (§13.6 BindHierarchy で `#PlaylistThumbnail` 含め自動バインド)、子コンポーネント協調、テーマカラー source-of-truth (§13.5)、active tab tracking、SetActive ベース view 切替 (Animator は #13 で optional 演出担当)、listing item から `_pendingOwnerName` / `_pendingYtThumbIndex` を carry-over して DetailView の cover art に反映 (Phase A-4) | UnityEngine.UI, TMPro, VRC.SDK3.Data |
-| `ListingClient` | popular / recent ページの GET、JSON パース | VRC.SDK3.StringLoading |
-| `SearchClient` | 検索 URL の動的取得 (VRCUrlInputField) と GET、prefix 検証 (PoolGenerator が `_expectedUrlPrefix` と input field の `m_Text` を baseUrl から Editor-time に同期、mismatch 時は actionable error を出す。runtime 復元は §12 #4 制約により不可) | VRC.SDK3.StringLoading |
+| `ListingClient` | popular / recent / news ページの GET、JSON パース | VRC.SDK3.StringLoading |
+| ~~`SearchClient`~~ | **#38 で廃止** — Web 誘導 UI に置換。詳細 §4.2 / §13.6 step 4 | — |
 | `PlaylistResolver` | /vrcurl/playlist/{i} の GET (vhub-playlist#91 v4: 200 JSON 直接)、トラック一覧パース | VRC.SDK3.StringLoading |
 | `ThumbnailLoader` | yt-thumb-direct pool (i.ytimg.com 直接 baked、vhub-playlist#92 v4) からサムネ取得、FIFO キュー + LRU キャッシュ | VRC.SDK3.Image |
 | `UISpinner` | Z 軸回転だけの極小コンポーネント、Loading overlay spinner 用 (§13.6) | UnityEngine |
@@ -399,7 +414,7 @@ KawaPlayer / VIB から学んだベストプラクティス:
    - VRCUrl の runtime 構築は `VRCUrlInputField.GetUrl()` のみ、そのフィールドへの入力は **VRChat 内蔵キーボード経由でしか出来ない**
    - 影響: v1 では検索 UX を 3D キーパッドではなく VRCUrlInputField + VRChat キーボードに統一 (§4.2 参照)
    - `Keypad3D` / `KeypadKey` は将来の汎用 TMP_InputField ユーティリティとして repo に残すが (#9, A: 残す)、**v1 prefab には含めない**
-5. **VRCUrlInputField の prefix プリセット (polish PR で更新)**: prefix プリセットは PoolGenerator (`Tools > VHub PlaylistViewer > Generate Pools`) が Editor-time に `baseUrl + /api/vrc/playlists/search?q=` を **3 箇所** (① `SearchClient._expectedUrlPrefix` ② `VRCUrlInputField.m_Text` ③ `VRCUrlInputField.m_TextComponent` が指す child の `UnityEngine.UI.Text` (or TMP_Text) の `m_Text`) に SerializedProperty 経由で書き込むため、Inspector 手動編集は不要。**重要**: `VRCUrlInputField` は `TMP_InputField` を継承せず `Selectable` 直系の独自実装で、runtime では **TextComponent (子) の text を URL ソースとして読む**。`m_Text` だけ書いて TextComponent を放置すると、Play Mode 入場時に空の TextComponent.text で `m_Text` が上書きされて prefix が消える (#37 user-reported bug)。staging/dev URL に切り替える際も Generate 再実行で 3 箇所自動追従。**ただし runtime に `VRCUrlInputField.text` を書き換える手段はない** (§12 #4) ので、ユーザーが VRChat キーボードで prefix 部分を消した場合は復元不能 — `SubmitSearch()` は推奨 prefix を含む actionable error message を出して再入力を促す
+5. **VRCUrlInputField の prefix プリセット (#38 で廃止)**: 旧 in-VRChat free-form search の prefix sync メカニズム (PR #32〜#37 で 3 箇所同期 + actionable error などを実装) は **#38 で Search 機能ごと撤去**。VRChat Udon API 制約 (`VRCUrl` runtime 構築不可、`VRCUrlInputField.text` setter 非公開、TMP_InputField 非継承による child TextComponent との二重管理、`TMP_InputField.ActivateInputField()` も Udon 非露出) により UX 改善不能と判断、Web ブラウザ誘導 UI (`#WebSearchHintLabel` + `#WebSearchUrlField` in `#SearchBar`) に置換した。新 UI の `#WebSearchUrlField` は **通常 TMP_InputField (NOT VRCUrlInputField)** のため `text` setter が Udon 露出済、Controller.Start で `_baseUrl + "/"` を runtime sync する単純な構成。詳細は §4.2 / §13.6 step 4。
 
 ## 13. VRChat 環境固有の注意点 / 公式仕様 (実装で踏みやすい罠)
 
@@ -566,7 +581,7 @@ UI 全体の配色を 1 箇所 (`PlaylistViewerController` の Inspector) で管
 |---|---|---|---|---|
 | `UI_RoundedPanel` | プログラム生成 (Pillow) | 96×96 | 24 (全方向) | 全 button + card + panel 背景 (`Image.type=Sliced` で任意サイズに stretch、コーナー 24px 維持) |
 | `UI_IconBack` | Phosphor `arrow-left-bold` | 128×128 | — | DetailView `#BackButton` |
-| `UI_IconSearch` | `magnifying-glass-bold` | 128×128 | — | `#SearchInputField` 周辺 |
+| `UI_IconSearch` | `magnifying-glass-bold` | 128×128 | — | (#38 で `#SearchIcon` 撤去後 unused、sprite asset は将来再利用余地のため残置) |
 | `UI_IconRefresh` | `arrow-clockwise-bold` | 128×128 | — | (将来) listing reload |
 | `UI_IconMusic` | `music-notes-bold` | 128×128 | — | サムネ placeholder 中央 |
 | `UI_IconError` | `warning-bold` | 128×128 | — | `#ErrorOverlay` 中央装飾 |
@@ -585,16 +600,16 @@ Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
 │   ├── BG: UI_RoundedPanel (surface tint via _surfacePanels[])
 │   └── #Title TMP "VHub PlaylistViewer" (font 48, primary color, center)
 ├── #SearchView                (中央 marker、children は世界座標で配置)
-│   ├── #SearchBar             (anchoredPos y=380, size 720×64) — 検索入力 row
-│   │   ├── BG: UI_RoundedPanel (surface)
-│   │   ├── #SearchIcon        (left, anchor 0,0.5, size 40×40) UI_IconSearch (text-muted tint)
-│   │   └── #SearchInputField  (stretch、56px left padding for icon、16px right)
-│   ├── #TabRow                (anchoredPos y=312, size 720×56) — タブ row
+│   ├── #TabRow                (anchoredPos y=372, size 720×56) — タブ row (#38 で Header 直下に上方移動、旧 y=312)
 │   │   └── HorizontalLayoutGroup (childForceExpandWidth、spacing=8)
 │   │       ├── #TabPopular    (HLG が幅再計算、~356×56 で 50% 配分)
 │   │       └── #TabRecent     (将来 News tab 追加時に 3 分割に戻る予定、vhub-playlist#97)
-│   └── Scroll View            (anchoredPos y=-114, size 720×780) — 結果カードリスト
-│       └── Viewport / Content / #ResultRow0..19
+│   ├── Scroll View            (anchoredPos y=-16, size 720×688) — 結果カードリスト (#38 で TabRow 上方移動 + SearchBar footer 化を受けて上方拡張、旧 720×780→720×636→**720×688**)
+│   │   └── Viewport / Content / #ResultRow0..19
+│   └── #SearchBar             (anchoredPos y=-436, size 720×120) — **footer**: Web 検索誘導 row (#38、Search 機能廃止 + 同 PR で footer 化)
+│       ├── BG: UI_RoundedPanel (surface)
+│       ├── #WebSearchHintLabel (top-stretch、anchoredPos y=-8、sizeDelta -32×44) TMP_Text 非インタラクティブ "プレイリスト検索は web で実施できます (↓ URL タップでコピー)"
+│       └── #WebSearchUrlField (bottom-stretch、anchoredPos y=8、sizeDelta -32×56) TMP_InputField readOnly、text=`https://playlist.vrc-hub.com/`、user タップで VRChat キーボード起動 → Copy 可
 ├── #DetailView                (stretch fills canvas)
 │   ├── #DetailHeader          (top-stretch, anchoredPos y=-104, size auto×64) — Back + section title
 │   │   ├── BG: UI_RoundedPanel (surface)
@@ -620,7 +635,7 @@ Canvas (768×1024, WorldSpace, BoxCollider+VRCUiShape)
 - `#SearchView/#DetailView` は **section grouping marker** で、SetActive(true/false) で切替対象 → 中身の組み換えは保ちつつ、controller の SetState ロジックは維持
 - `#SearchBar` `#TabRow` `#DetailHeader` は **明示的グルーピング container** で、見た目だけでなく hierarchy 上で関係性を表現 → prefab 化担当者・将来のデザイナーが構造を読みやすく
 - `#TabRow` は HorizontalLayoutGroup で **タブ等幅自動配置** (手動座標指定の y バラつき問題を排除)
-- **検索の発火**: 旧 `#TabSearch` button は廃止し、`#SearchInputField` (VRCUrlInputField) の **`OnEndEdit` (Enter / VRChat キーボード閉じ)** で `Controller.RequestSearch` を発火。`Search` タブの「タブ?入力欄?」曖昧さを解消、空 slot は将来 News タブ ([vhub-playlist#97](https://github.com/kisaragi-official/vhub-playlist/issues/97)) で埋める想定
+- **検索の発火** (#38 で完全廃止): 旧 `#TabSearch` button は Phase A-3 で削除 (Enter-to-search 化)、その後 `#SearchInputField` (VRCUrlInputField) も **#38 で撤去**。VRChat Udon API 制約により in-VRChat free-form search の UX 改善が不能と判断、Web ブラウザ誘導 UI (`#WebSearchHintLabel` + `#WebSearchUrlField`) に置換 (詳細 §4.2)。Popular / Recent / News の browse 体験は維持
 - `#DetailHeader` の section title (`プレイリスト詳細`) は **静的テキスト** で localization は別途検討 (V1 は日本語固定)
 
 #### 再構築用 scene 配線手順 (prefab 化 #12 で必要)
@@ -630,9 +645,9 @@ testing-chamber で動作確認済の手順。`#12` で `Runtime/Prefabs/Playlis
 1. **Tab Image** (`#TabPopular/Recent`): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = None` (色は controller が制御)。HLG 内では sizeDelta 0、anchor (0,0)-(1,1)。Button.onClick → `Controller` UdonBehaviour `SendCustomEvent` mode=String、strArg=`OnTabPopular` / `OnTabRecent`
 2. **ResultRow `#SelectButton`** (20 行): sprite=`UI_RoundedPanel`、type=Sliced、color=white。`Button.transition = ColorTint` (ResultRow.Start が Button.colors を上書き)
 3. **`#Header`** (Canvas 直下): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-8) size (-16, 88)、Image sprite=`UI_RoundedPanel` Sliced color=white surface tint。Title TMP child (text "VHub PlaylistViewer" font 48 white center)
-4. **`#SearchBar`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,380) size (720,64)、Image surface tint、`#SearchInputField` を再 parent + `#SearchIcon` (UI_IconSearch、left 16px、size 40×40) child 追加。`#SearchInputField` (VRCUrlInputField) の **`OnEndEdit` UnityEvent** に persistent listener を 1 件追加 (target=`Controller` の UdonBehaviour、method=`SendCustomEvent`、mode=String、strArg=`RequestSearch`)。Placeholder text を `プレイリストを検索 (Enter で確定)` に。**`#SearchInputField.text` の手動 preset 不要** (polish PR で導入): `Tools > VHub PlaylistViewer > Generate Pools` を実行すると、PoolGenerator が `baseUrl + /api/vrc/playlists/search?q=` を 3 箇所 (`SearchClient._expectedUrlPrefix` / `VRCUrlInputField.m_Text` / `VRCUrlInputField.m_TextComponent` が指す child の `UnityEngine.UI.Text` (or TMP_Text) の `m_Text`) に SerializedProperty 経由で書き込む。`VRCUrlInputField` は TMP_InputField を継承せず TextComponent を子に持つ Selectable 実装のため、`m_Text` 単独設定だと Play Mode 入場時に空の TextComponent で上書きされる (詳細 §12 #5)。staging/dev URL に切り替える場合も Generate 再実行で 3 箇所自動追従
-5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) anchoredPos (0,312) size (720,56)、HorizontalLayoutGroup attach (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` / `#TabNews` の 3 タブを child に re-parent。**polish PR 以降 `#TabNews` は `SetActive(false)`** でユーザー要望により非表示化、HLG が active な 2 child (Popular/Recent) を 50% 等幅再分配。`#TabNews` の Button.onClick は `Controller.SendCustomEvent("OnTabNews")`、Image は `UI_RoundedPanel` Sliced (color=white、Button.transition=None で controller 制御)、Text は "News" (legacy Text、英語固定 V1)。再有効化は `#TabNews.SetActive(true)` のみで OK (`OnTabNews` / `RequestNews` / `LoadNews` / news-mode RenderResultList / `_tabNewsBg` field / `_newsUrl` field / news bake は維持)
-6. **SearchView `Scroll View`** repos: anchoredPos (0,-114) size (720,780) で Header/SearchBar/TabRow の下に配置
+4. **`#SearchBar`** (`#SearchView` の child、**#38 で全面再構成 + footer 化**): anchor (0.5,0.5)-(0.5,0.5) **anchoredPos (0,-436) size (720,120)** — canvas 下端から 16px の **footer 位置** (旧 anchoredPos.y=380 で top に配置していたが、#Header 下端 (canvas y=416) と重なる問題があったため、視覚的にも UX 的にも footer 化が望ましいと user 指摘で同 PR 内で再配置)。Image surface tint。**Web 検索誘導 UI** を 2 children で構成:<br>　(a) **`#WebSearchHintLabel`** (TMP_Text、非インタラクティブ): RectTransform anchor (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-8) sizeDelta (-32,44)。`TextMeshProUGUI` text=`プレイリスト検索は web で実施できます (↓ URL タップでコピー)`、fontSize=22、color=white α=0.7、`raycastTarget=false`。font は scene の他 TMP と統一 (LiberationSans SDF + VRChat runtime 日本語 fallback、§13.1)<br>　(b) **`#WebSearchUrlField`** (TMP_InputField readOnly、**NOT VRCUrlInputField**): RectTransform anchor (0,0)-(1,0) pivot (0.5,0) anchoredPos (0,8) sizeDelta (-32,56)。`TMP_InputField.text=https://playlist.vrc-hub.com/` (Editor preset、Controller.Start で `_baseUrl + "/"` を runtime 上書き)、`readOnly=true`、`interactable=true`。標準 TMP_InputField のため child に Text Area / Placeholder / Text TMP を持つ (DetailView `#UrlField` と同一 template、Instantiate 複製で生成)。User タップで VRChat キーボード起動 → URL がプリセット表示 → Copy 可<br>　**Note**: 旧 #SearchInputField (VRCUrlInputField) の prefix sync メカニズムは #38 で完全撤去。`TMP_InputField.ActivateInputField()` も Udon 非露出のため、HintLabel を Button にしてプログラマティック focus する案も実装不能 — UI 上は label で「↓ URL タップでコピー」と案内、user は URL field を直接タップする
+5. **`#TabRow`** (`#SearchView` の child): anchor (0.5,0.5)-(0.5,0.5) **anchoredPos (0,372)** size (720,56)、HorizontalLayoutGroup attach (#38 で Header 直下 16px gap に上方移動、旧 y=312) (childForceExpandWidth=true, childForceExpandHeight=true, spacing=8, childAlignment=MiddleCenter)、`#TabPopular` / `#TabRecent` / `#TabNews` の 3 タブを child に re-parent。**polish PR 以降 `#TabNews` は `SetActive(false)`** でユーザー要望により非表示化、HLG が active な 2 child (Popular/Recent) を 50% 等幅再分配。`#TabNews` の Button.onClick は `Controller.SendCustomEvent("OnTabNews")`、Image は `UI_RoundedPanel` Sliced (color=white、Button.transition=None で controller 制御)、Text は "News" (legacy Text、英語固定 V1)。再有効化は `#TabNews.SetActive(true)` のみで OK (`OnTabNews` / `RequestNews` / `LoadNews` / news-mode RenderResultList / `_tabNewsBg` field / `_newsUrl` field / news bake は維持)
+6. **SearchView `Scroll View`** repos: anchoredPos (0,**-16**) size (720,**688**) で `#TabRow` 下端 (canvas y=344) の 16px 下から `#SearchBar` 上端 (canvas y=-376) の 16px 上まで配置 (#38 で footer SearchBar 挿入で 720×780→720×636 に縮小したのち、TabRow 上方移動で freed space を 720×688 に再拡張、track 同時表示数 ~10→~9 に回復)。算式: `top_y=328` (=TabRow bottom 344 -16 padding) / `bottom_y=-360` (=SearchBar top -376 +16 padding) / `height=688` / `anchoredPos.y=(328+(-360))/2=-16` / `sizeDelta=(720,688)`。全 4 段 (#Header / #TabRow / Scroll View / #SearchBar) が **均一 16px gap** で並ぶ統一感ある縦レイアウト
 7. **`#DetailHeader`** (`#DetailView` の child): anchor top-stretch (0,1)-(1,1) pivot (0.5,1) anchoredPos (0,-104) size (-16,64)、Image surface tint。`#BackButton` を child に再 parent (anchor (0,0.5)-(0,0.5) pivot (0,0.5) anchoredPos (8,0) size (56,48)、`#Icon` child UI_IconBack 28×28)。`#SectionTitle` TMP child ("プレイリスト詳細" font 36 white center)
 8. **`#PlaylistThumbnail`** (Phase A-4 新設、`#DetailView` の child): RawImage、anchor (0,1)-(0,1) pivot (0,1) anchoredPos (32,-184) sizeDelta (200, 200) で cover row 左に配置。default texture: `UI_ThumbPlaceholder` (PR #32)。SiblingIndex は `#DetailHeader` の直後 (= Scroll View より早い render order) に置くことで Scroll View 内 track が thumbnail 上に render
 9. **DetailView meta row** reposition (Phase A-4 で cover row 右列に再配置):

@@ -7,7 +7,6 @@ using UdonSharp;
 using UdonSharpEditor;
 using UnityEditor;
 using UnityEngine;
-using VRC.SDK3.Components;
 using VRC.SDKBase;
 
 namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
@@ -218,7 +217,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             // Proxy 上の SerializeField 書き込みを **背後の UdonBehaviour にも sync** する。
             // これがないと runtime (Play Mode / VR build) では UdonBehaviour の publicVariables が
             // 古い値のままで、proxy 経由でセットした VRCUrl[] や string が反映されない (docs §13.6 参照)。
-            // 既存 5 pool 代入 + 本 PR で追加した SearchClient prefix 代入の全てが影響を受ける (#37 review)。
+            // 既存 5 pool 代入 (resolve / yt-thumb / popular / recent / news) すべてに必要 (#37 review)。
             if (target is UdonSharpBehaviour usb)
             {
                 UdonSharpEditorUtility.CopyProxyToUdon(usb);
@@ -232,7 +231,6 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             ListingClient listingClient,
             PlaylistResolver resolver,
             ThumbnailLoader thumbnailLoader,
-            SearchClient searchClient,
             GenerateOptions opts)
         {
             Result r = new Result();
@@ -272,72 +270,10 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
             VRCUrl newsUrl = new VRCUrl(baseUrl + "/api/vrc/news?p=0");
             AssignPrivateField(listingClient, "_newsUrl", newsUrl);
 
-            // 6. Search prefix sync (#23 polish、user-reported VR test bug):
-            //    SearchClient の `_expectedUrlPrefix` (string)、バインドされた VRCUrlInputField の
-            //    `m_Text` (Inspector backing)、**および `m_TextComponent` が指す child Text/TMP の
-            //    text 表示文字列** の 3 箇所を baseUrl から同じ値で同期する。
-            //
-            //    なぜ TextComponent も同期するか: VRCUrlInputField は TMP_InputField を継承せず
-            //    Selectable 直系の独自実装で、runtime では `m_TextComponent` (子の UnityEngine.UI.Text or
-            //    TMP_Text) の text を URL ソースとして読む。VRCUrlInputField.m_Text だけ更新しても、
-            //    Play Mode 入場時に TextComponent の (空) 文字列で m_Text が上書きされるため、
-            //    両方を同期しないと意味がない。
-            //
-            //    runtime からは VRCUrlInputField.text setter は Udon 非公開 (docs §12 #4) のため、
-            //    scene 配置時の preset を Editor-time に確実に正しい値にしておくのが唯一の解。
-            string searchPrefixSyncMessage = "search prefix sync skipped (SearchClient unassigned)";
-            if (searchClient != null)
-            {
-                string searchPrefix = baseUrl + "/api/vrc/playlists/search?q=";
-                AssignPrivateField(searchClient, "_expectedUrlPrefix", searchPrefix);
-
-                SerializedObject sc = new SerializedObject(searchClient);
-                SerializedProperty inputProp = sc.FindProperty("_searchInputField");
-                VRCUrlInputField inputField = inputProp != null ? inputProp.objectReferenceValue as VRCUrlInputField : null;
-                if (inputField != null)
-                {
-                    SerializedObject ifo = new SerializedObject(inputField);
-                    SerializedProperty textProp = ifo.FindProperty("m_Text");
-                    SerializedProperty tcProp = ifo.FindProperty("m_TextComponent");
-                    bool mTextOk = false;
-                    bool textComponentOk = false;
-
-                    if (textProp != null)
-                    {
-                        textProp.stringValue = searchPrefix;
-                        ifo.ApplyModifiedProperties();
-                        EditorUtility.SetDirty(inputField);
-                        mTextOk = true;
-                    }
-
-                    // 子の TextComponent (legacy UI.Text or TMP_Text) も同期
-                    UnityEngine.Component tc = tcProp != null ? tcProp.objectReferenceValue as UnityEngine.Component : null;
-                    if (tc != null)
-                    {
-                        SerializedObject tco = new SerializedObject(tc);
-                        // legacy UI.Text と TMP_Text 双方が m_Text プロパティを持つ
-                        SerializedProperty tcText = tco.FindProperty("m_Text");
-                        if (tcText != null)
-                        {
-                            tcText.stringValue = searchPrefix;
-                            tco.ApplyModifiedProperties();
-                            EditorUtility.SetDirty(tc);
-                            textComponentOk = true;
-                        }
-                    }
-
-                    if (mTextOk && textComponentOk)
-                        searchPrefixSyncMessage = "search prefix synced (m_Text + TextComponent + _expectedUrlPrefix)";
-                    else if (mTextOk)
-                        searchPrefixSyncMessage = "search prefix: m_Text + _expectedUrlPrefix synced, but TextComponent missing/unwritable";
-                    else
-                        searchPrefixSyncMessage = "search prefix: _expectedUrlPrefix synced, but m_Text not found on VRCUrlInputField";
-                }
-                else
-                {
-                    searchPrefixSyncMessage = "search prefix: _expectedUrlPrefix synced, but _searchInputField is unassigned";
-                }
-            }
+            // #38: Search prefix sync (旧 section 6) を撤去。
+            // SearchClient と in-VRChat free-form search は Web 誘導 UI に置換 (#SearchView/#SearchBar
+            // 内の `#WebSearchHintLabel` 案内 TMP_Text + `#WebSearchUrlField` readOnly TMP_InputField)。
+            // Web URL は Controller.Start で `_baseUrl + "/"` を runtime sync するため、PoolGenerator-bake 不要。
 
             AssetDatabase.SaveAssets();
 
@@ -346,8 +282,7 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer.Editor
                 ", yt-thumb-direct=" + ytThumbUrls.Length + " (fetched from server)" +
                 ", popular pages=" + opts.ListingPageCount +
                 ", recent pages=" + opts.ListingPageCount +
-                ", news=1 (single page, vhub-playlist#97)" +
-                ", " + searchPrefixSyncMessage;
+                ", news=1 (single page, vhub-playlist#97)";
             return r;
         }
     }
