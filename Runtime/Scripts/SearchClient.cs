@@ -12,10 +12,20 @@ namespace MegaGorilla.KawaPlayer.PlaylistViewer
     /// VRCUrl はランタイム生成不可のため、ユーザーが VRCUrlInputField に入力した文字列
     /// (VRChat 内蔵キーボード経由、Copy/Paste も可) を GetUrl() で取得する経路を使う。
     ///
-    /// prefix 同期: PoolGenerator (Editor) が `Generate` 実行時に `_expectedUrlPrefix` (string) と
-    /// バインドされた `_searchInputField` の `m_Text` (TMP_InputField の Inspector backing) の
-    /// 両方を `baseUrl + /api/vrc/playlists/search?q=` で同期する (docs §13.6 step 4)。
-    /// runtime からは `VRCUrlInputField.text` setter は Udon 非公開 (§12 #4) のため復元不能。
+    /// prefix 同期: PoolGenerator (Editor) が `Generate` 実行時に **3 箇所** を
+    /// `baseUrl + /api/vrc/playlists/search?q=` で同期する (docs §13.6 step 4 + §12 #5):
+    ///   1. `_expectedUrlPrefix` (string SerializeField、本クラス。runtime 検証用)
+    ///   2. バインドされた `_searchInputField` (`VRCUrlInputField`) の `m_Text` (Inspector backing)
+    ///   3. その `m_TextComponent` が指す child の `UnityEngine.UI.Text` (legacy) または `TMP_Text` の `m_Text`
+    ///
+    /// なぜ 3 箇所必要か: `VRCUrlInputField` は `TMP_InputField` を継承せず `Selectable` 直系の
+    /// 独自実装で、runtime では `m_TextComponent` (子の Text/TMP) の text を URL ソースとして読む。
+    /// VRCUrlInputField.m_Text 単独設定だと Play Mode 入場時に空の TextComponent.text で m_Text が
+    /// 上書きされ、prefix が消える (#37 user-reported bug)。
+    ///
+    /// runtime からは `VRCUrlInputField.text` setter は Udon 非公開 (§12 #4) のため、
+    /// ユーザーが VRChat キーボードで prefix を消した場合の自動復元は不能 →
+    /// `SubmitSearch` は推奨 prefix を含む actionable error を出して再入力を促す。
     /// </summary>
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class SearchClient : UdonSharpBehaviour
