@@ -43,17 +43,30 @@ free-form 検索は **Web ブラウザに誘導** (`https://playlist.vrc-hub.com
 
 ## インストール
 
-### 方法 A: VCC 経由 (推奨、#17 VPM listing 完了後)
+3 つの方法から選択。**VCC 経由を推奨**。
+
+### 方法 A: VCC 経由 (推奨)
 
 1. [VCC (Creator Companion)](https://vcc.docs.vrchat.com/) を開く
-2. **Settings > Packages > Add Repository** で本パッケージの VPM listing URL を追加 (#17 完了後に共有)
+2. **Settings > Packages > Add Repository** で `https://mega-gorilla.github.io/vpm-repos/index.json` を追加 ([KawaPlayer](https://github.com/Mega-Gorilla/KawaPlayer) を導入済の場合は既登録)
 3. Project の **Manage Project > Manage Packages** で `VHub PlaylistViewer` を検索 → **+** で追加
 
-### 方法 B: 手動 install (#17 未完了の現時点)
+### 方法 B: GitHub Release `.zip` 手動 install
 
-1. 本リポジトリを clone or 任意の release zip をダウンロード
-2. Unity Project の `Packages/com.vhub.kawaplayer-playlistviewer/` にコピー (または symlink)
+1. [Releases](https://github.com/Mega-Gorilla/VhubPlaylistViewer/releases) から **`com.vhub.kawaplayer-playlistviewer-{version}.zip`** をダウンロード
+2. Unity Project の `Packages/com.vhub.kawaplayer-playlistviewer/` に解凍 (`package.json` が直下に来る形)
 3. Unity Editor で自動 import + UdonSharp 自動 recompile
+
+### 方法 C: `.unitypackage` 経由
+
+非 VCC ユーザー向け。Unity の `Assets > Import Package > Custom Package` から install。
+
+1. [Releases](https://github.com/Mega-Gorilla/VhubPlaylistViewer/releases) から **`com.vhub.kawaplayer-playlistviewer-{version}.unitypackage`** をダウンロード
+2. Unity Editor で **`Assets > Import Package > Custom Package`** → ダウンロードした `.unitypackage` を選択 → import
+3. Files 配置先: `Packages/com.vhub.kawaplayer-playlistviewer/...` (VPM 同等の path、Unity 2022.3+ で自動 package 認識)
+4. UdonSharp 自動 recompile
+
+**注意**: 方法 A/B/C は **mutually exclusive** (どれか 1 つだけ選択)。複数同時 install は GUID 重複で Unity が error を出します。
 
 ## セットアップ (5 step)
 
