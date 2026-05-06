@@ -6,6 +6,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- `0.1.0` release に **`.unitypackage` 配布** を追加 (`com.vhub.kawaplayer-playlistviewer-0.1.0.unitypackage`、~1.92 MB、54 assets)。Unity の `Assets > Import Package > Custom Package` 経由で install 可能、非 VCC ユーザー向けの選択肢。Unity `AssetDatabase.ExportPackage` で `Packages/com.vhub.kawaplayer-playlistviewer/...` path を保持して export、VPM install と同 GUID で互換 (mutually exclusive、混用は GUID 重複 error)。README "インストール" 章を 2 → 3 方法 (VCC / `.zip` 手動 / `.unitypackage`) に拡張、選択指針 + 注意事項を追記。
+
 ## [0.1.0] - 2026-05-02
 
 **初の VPM listing 公開 release** (alpha)。Phase A 系列 (#23、#32〜#41、計 8 PR) で完成した PlaylistViewer 一式を `Mega-Gorilla/vpm-repos` 経由で VCC からインストール可能にする。Apache License 2.0、`Runtime/Prefabs/PlaylistViewer.prefab` 同梱、testing-chamber で動作確認済。
