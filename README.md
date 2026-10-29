@@ -1,5 +1,14 @@
 # VHub PlaylistViewer
 
+> [!IMPORTANT]
+> **サービスを終了しました（2026-10-29）**
+>
+> VHub PlaylistViewer は、サービスを終了しました。同じ機能（ワールドの中で VHub PlayList のプレイリストを探して、動画プレイヤーに渡す）は、[KawaPlayer](https://github.com/Mega-Gorilla/KawaPlayer) 本体に実装する予定です（[KawaPlayer #145](https://github.com/Mega-Gorilla/KawaPlayer/issues/145)）。
+>
+> - VCC 用の一覧（VHub Packages）から外しました。VCC から新しく入れることはできません。
+> - VHub の側でも、このパッケージが使っていた経路（人気・新着の一覧、サムネイルなど）の提供を終えています。更新や不具合の修正もありません。プロジェクトに入っている場合は、外してください。
+> - このリポジトリはアーカイブ（読み取り専用）にしました。リリース（0.1.0）とコードは、記録として残しています。
+
 **VRChat ワールド内で [VHub PlayList](https://playlist.vrc-hub.com) のプレイリストを browse して、URL を [KawaPlayer](https://github.com/Mega-Gorilla/KawaPlayer) などの動画プレイヤーに渡す View 専用 unitypackage。**
 
 ![SearchView](docs/images/searchview.png)
